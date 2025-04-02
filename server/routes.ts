@@ -1,0 +1,404 @@
+import type { Express, Request, Response, NextFunction } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { insertUserSchema, insertBookSchema, insertReviewSchema, insertReadingProgressSchema } from "@shared/schema";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { ZodError } from "zod";
+
+// Configure multer for file uploads
+const uploadDir = path.join(process.cwd(), "uploads");
+
+// Ensure upload directory exists
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage_config = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const userId = req.body.authorId;
+    const userDir = path.join(uploadDir, userId ? userId.toString() : "temp");
+    
+    if (!fs.existsSync(userDir)) {
+      fs.mkdirSync(userDir, { recursive: true });
+    }
+    
+    cb(null, userDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage_config,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB file size limit
+  },
+  fileFilter: function (req, file, cb) {
+    // Allow only PDF, EPUB files
+    const allowedExtensions = ['.pdf', '.epub'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and EPUB files are allowed'));
+    }
+  }
+});
+
+const coverUpload = multer({
+  storage: storage_config,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB file size limit
+  },
+  fileFilter: function (req, file, cb) {
+    // Allow only image files
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPG, JPEG, PNG and GIF files are allowed'));
+    }
+  }
+});
+
+// Middleware to validate request with Zod schema
+function validateRequest<T>(schema: any) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = schema.parse(req.body);
+      req.body = data;
+      next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors.map(e => ({
+            path: e.path.join('.'),
+            message: e.message
+          }))
+        });
+      } else {
+        next(error);
+      }
+    }
+  };
+}
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Public API routes
+  
+  // Get all books
+  app.get('/api/books', async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      const books = await storage.getBooks(limit, offset);
+      res.json(books);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching books' });
+    }
+  });
+
+  // Get book by ID
+  app.get('/api/books/:id', async (req, res) => {
+    try {
+      const bookId = parseInt(req.params.id);
+      const book = await storage.getBook(bookId);
+      
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      res.json(book);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching book' });
+    }
+  });
+
+  // Search books
+  app.get('/api/books/search/:query', async (req, res) => {
+    try {
+      const query = req.params.query;
+      const books = await storage.searchBooks(query);
+      res.json(books);
+    } catch (error) {
+      res.status(500).json({ message: 'Error searching books' });
+    }
+  });
+
+  // Get books by category
+  app.get('/api/books/category/:category', async (req, res) => {
+    try {
+      const category = req.params.category;
+      const books = await storage.getBooksByCategory(category);
+      res.json(books);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching books by category' });
+    }
+  });
+
+  // Get books by author
+  app.get('/api/books/author/:authorId', async (req, res) => {
+    try {
+      const authorId = parseInt(req.params.authorId);
+      const books = await storage.getBooksByAuthor(authorId);
+      res.json(books);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching books by author' });
+    }
+  });
+
+  // Get reviews for a book
+  app.get('/api/books/:id/reviews', async (req, res) => {
+    try {
+      const bookId = parseInt(req.params.id);
+      const reviews = await storage.getReviewsByBook(bookId);
+      res.json(reviews);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching reviews' });
+    }
+  });
+
+  // User authentication
+  
+  // Register user
+  app.post('/api/auth/register', validateRequest(insertUserSchema), async (req, res) => {
+    try {
+      const { username, email } = req.body;
+      
+      // Check if username already exists
+      const existingUsername = await storage.getUserByUsername(username);
+      if (existingUsername) {
+        return res.status(400).json({ message: 'Username already exists' });
+      }
+      
+      // Check if email already exists
+      const existingEmail = await storage.getUserByEmail(email);
+      if (existingEmail) {
+        return res.status(400).json({ message: 'Email already exists' });
+      }
+      
+      const user = await storage.createUser(req.body);
+      
+      // Don't send password back
+      const { password, ...userWithoutPassword } = user;
+      
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating user' });
+    }
+  });
+
+  // Login
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      
+      if (!username || !password) {
+        return res.status(400).json({ message: 'Username and password are required' });
+      }
+      
+      const user = await storage.getUserByUsername(username);
+      
+      if (!user || user.password !== password) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      
+      // Don't send password back
+      const { password: _, ...userWithoutPassword } = user;
+      
+      res.json(userWithoutPassword);
+    } catch (error) {
+      res.status(500).json({ message: 'Error during login' });
+    }
+  });
+
+  // Book management
+  
+  // Create book with file upload
+  app.post('/api/books', upload.single('bookFile'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'Book file is required' });
+      }
+      
+      const bookData = {
+        ...req.body,
+        authorId: parseInt(req.body.authorId),
+        filePath: req.file.path,
+        published: req.body.published === 'true'
+      };
+      
+      // Validate book data
+      try {
+        insertBookSchema.parse(bookData);
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json({ 
+            message: "Validation error", 
+            errors: error.errors.map(e => ({
+              path: e.path.join('.'),
+              message: e.message
+            }))
+          });
+        }
+        throw error;
+      }
+      
+      const book = await storage.createBook(bookData);
+      res.status(201).json(book);
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating book' });
+    }
+  });
+
+  // Upload book cover
+  app.post('/api/books/:id/cover', coverUpload.single('coverImage'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'Cover image is required' });
+      }
+      
+      const bookId = parseInt(req.params.id);
+      const book = await storage.getBook(bookId);
+      
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      const updatedBook = await storage.updateBook(bookId, {
+        coverImage: req.file.path
+      });
+      
+      res.json(updatedBook);
+    } catch (error) {
+      res.status(500).json({ message: 'Error uploading cover image' });
+    }
+  });
+
+  // Update book
+  app.put('/api/books/:id', async (req, res) => {
+    try {
+      const bookId = parseInt(req.params.id);
+      const book = await storage.getBook(bookId);
+      
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      // Convert authorId and published to correct types
+      const bookUpdate = {
+        ...req.body,
+        authorId: req.body.authorId ? parseInt(req.body.authorId) : undefined,
+        published: req.body.published !== undefined ? (req.body.published === true || req.body.published === 'true') : undefined
+      };
+      
+      const updatedBook = await storage.updateBook(bookId, bookUpdate);
+      res.json(updatedBook);
+    } catch (error) {
+      res.status(500).json({ message: 'Error updating book' });
+    }
+  });
+
+  // Delete book
+  app.delete('/api/books/:id', async (req, res) => {
+    try {
+      const bookId = parseInt(req.params.id);
+      const book = await storage.getBook(bookId);
+      
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      // Delete the book file if it exists
+      if (book.filePath && fs.existsSync(book.filePath)) {
+        fs.unlinkSync(book.filePath);
+      }
+      
+      // Delete the cover image if it exists
+      if (book.coverImage && fs.existsSync(book.coverImage)) {
+        fs.unlinkSync(book.coverImage);
+      }
+      
+      await storage.deleteBook(bookId);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: 'Error deleting book' });
+    }
+  });
+
+  // Reviews
+  
+  // Create review
+  app.post('/api/reviews', validateRequest(insertReviewSchema), async (req, res) => {
+    try {
+      const review = await storage.createReview(req.body);
+      res.status(201).json(review);
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating review' });
+    }
+  });
+
+  // Get reviews by user
+  app.get('/api/users/:id/reviews', async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const reviews = await storage.getReviewsByUser(userId);
+      res.json(reviews);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching reviews' });
+    }
+  });
+
+  // Reading progress
+  
+  // Get reading progress
+  app.get('/api/users/:userId/books/:bookId/progress', async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const bookId = parseInt(req.params.bookId);
+      
+      const progress = await storage.getReadingProgress(userId, bookId);
+      
+      if (!progress) {
+        return res.status(404).json({ message: 'Reading progress not found' });
+      }
+      
+      res.json(progress);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching reading progress' });
+    }
+  });
+
+  // Update reading progress
+  app.post('/api/reading-progress', validateRequest(insertReadingProgressSchema), async (req, res) => {
+    try {
+      const progress = await storage.createOrUpdateReadingProgress(req.body);
+      res.status(201).json(progress);
+    } catch (error) {
+      res.status(500).json({ message: 'Error updating reading progress' });
+    }
+  });
+
+  // Serve uploaded files
+  app.get('/uploads/:userId/:filename', (req, res) => {
+    const filePath = path.join(uploadDir, req.params.userId, req.params.filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    
+    res.sendFile(filePath);
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
