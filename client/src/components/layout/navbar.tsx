@@ -55,7 +55,7 @@ export const Navbar: React.FC = () => {
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-8">
               <Link href="/discover">
-                <a className={`px-3 py-2 text-sm font-medium ${isActive("/discover")}`}>
+                <a className={`px-3 py-2 text-sm font-medium books-discovery ${isActive("/discover")}`}>
                   Discover
                 </a>
               </Link>
@@ -70,7 +70,7 @@ export const Navbar: React.FC = () => {
                 </a>
               </Link>
               <Link href="/dashboard/upload">
-                <a className={`px-3 py-2 text-sm font-medium ${isActive("/dashboard/upload")}`}>
+                <a className={`px-3 py-2 text-sm font-medium upload-book ${isActive("/dashboard/upload")}`}>
                   Publish
                 </a>
               </Link>
@@ -93,7 +93,7 @@ export const Navbar: React.FC = () => {
               {user ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Button variant="ghost" className="relative h-8 w-8 rounded-full user-profile">
                       <span className="sr-only">Open user menu</span>
                       <div className="flex items-center justify-center h-8 w-8 rounded-full bg-secondary text-white">
                         {user.username.charAt(0).toUpperCase()}
@@ -103,7 +103,7 @@ export const Navbar: React.FC = () => {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>My Account</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => navigate("/dashboard")}>
+                    <DropdownMenuItem onClick={() => navigate("/dashboard")} className="author-dashboard">
                       Dashboard
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/dashboard/upload")}>
@@ -117,7 +117,7 @@ export const Navbar: React.FC = () => {
                 </DropdownMenu>
               ) : (
                 <Link href="/login">
-                  <Button className="bg-secondary hover:bg-secondary-dark text-white">
+                  <Button className="bg-secondary hover:bg-secondary-dark text-white user-profile">
                     Sign In
                   </Button>
                 </Link>
