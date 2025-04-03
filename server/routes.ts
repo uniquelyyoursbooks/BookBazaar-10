@@ -6,6 +6,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { ZodError } from "zod";
+import { FileFilterCallback } from "multer";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -51,6 +52,7 @@ const upload = multer({
   }
 });
 
+// Configure multer for cover image uploads
 const coverUpload = multer({
   storage: storage_config,
   limits: {
@@ -68,6 +70,37 @@ const coverUpload = multer({
     }
   }
 });
+
+// Override multer's file filter for the combined upload
+const multipleFileFilter = function(
+  req: Request, 
+  file: Express.Multer.File, 
+  cb: FileFilterCallback
+) {
+  if (file.fieldname === 'bookFile') {
+    // Handle book files
+    const allowedExtensions = ['.pdf', '.epub'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and EPUB files are allowed for books'));
+    }
+  } else if (file.fieldname === 'coverImage') {
+    // Handle cover images
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPG, JPEG, PNG and GIF files are allowed for covers'));
+    }
+  } else {
+    cb(new Error('Unexpected field'));
+  }
+};
 
 // Middleware to validate request with Zod schema
 function validateRequest<T>(schema: any) {
@@ -224,16 +257,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Book management
   
   // Create book with file upload
-  app.post('/api/books', upload.single('bookFile'), async (req, res) => {
+  // Use fields to handle multiple file types
+  const uploadFields = multer({
+    storage: storage_config,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: multipleFileFilter
+  }).fields([
+    { name: 'bookFile', maxCount: 1 },
+    { name: 'coverImage', maxCount: 1 }
+  ]);
+  
+  app.post('/api/books', uploadFields, async (req, res) => {
     try {
-      if (!req.file) {
+      // Check if there's a book file
+      if (!req.files || !req.files.bookFile || !req.files.bookFile[0]) {
         return res.status(400).json({ message: 'Book file is required' });
+      }
+      
+      const bookFile = req.files.bookFile[0];
+      
+      // Get cover image if available
+      let coverImagePath;
+      if (req.files.coverImage && req.files.coverImage[0]) {
+        coverImagePath = req.files.coverImage[0].path;
       }
       
       const bookData = {
         ...req.body,
         authorId: parseInt(req.body.authorId),
-        filePath: req.file.path,
+        filePath: bookFile.path,
+        coverImage: coverImagePath,
         published: req.body.published === 'true'
       };
       
@@ -256,6 +309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const book = await storage.createBook(bookData);
       res.status(201).json(book);
     } catch (error) {
+      console.error('Error creating book:', error);
       res.status(500).json({ message: 'Error creating book' });
     }
   });
