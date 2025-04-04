@@ -69,6 +69,11 @@ export const Navbar: React.FC = () => {
                   Authors
                 </a>
               </Link>
+              <Link href="/recommendations">
+                <a className={`px-3 py-2 text-sm font-medium ${isActive("/recommendations")}`}>
+                  Recommendations
+                </a>
+              </Link>
               <Link href="/dashboard/upload">
                 <a className={`px-3 py-2 text-sm font-medium upload-book ${isActive("/dashboard/upload")}`}>
                   Publish
@@ -156,6 +161,11 @@ export const Navbar: React.FC = () => {
             <Link href="/discover?view=authors">
               <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
                 Authors
+              </a>
+            </Link>
+            <Link href="/recommendations">
+              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+                Recommendations
               </a>
             </Link>
             <Link href="/dashboard/upload">

@@ -1,13 +1,19 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertBookSchema, insertReviewSchema, insertReadingProgressSchema } from "@shared/schema";
+import { insertUserSchema, insertBookSchema, insertReviewSchema, insertReadingProgressSchema, ReadingProgress } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { ZodError } from "zod";
 import { FileFilterCallback } from "multer";
-import { generateWritingMoodBoard, type MoodBoardResponse } from "./openai";
+import { 
+  generateWritingMoodBoard, 
+  type MoodBoardResponse,
+  generateBookRecommendations,
+  type BookRecommendation,
+  type BookRecommendationParams
+} from "./openai";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -271,7 +277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/books', uploadFields, async (req, res) => {
     try {
       // Check if there's a book file
-      if (!req.files || !req.files.bookFile || !req.files.bookFile[0]) {
+      if (!req.files || !('bookFile' in req.files) || !req.files.bookFile[0]) {
         return res.status(400).json({ message: 'Book file is required' });
       }
       
@@ -279,7 +285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get cover image if available
       let coverImagePath;
-      if (req.files.coverImage && req.files.coverImage[0]) {
+      if ('coverImage' in req.files && req.files.coverImage[0]) {
         coverImagePath = req.files.coverImage[0].path;
       }
       
@@ -479,6 +485,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error generating mood board:', error);
       res.status(500).json({ 
         message: 'Error generating mood board', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+  
+  // Book Recommendation Engine
+  app.post('/api/recommendations', async (req, res) => {
+    try {
+      const { userId, genre, recentlyRead, interests, limit } = req.body;
+      
+      if (!process.env.OPENAI_API_KEY) {
+        console.warn('OPENAI_API_KEY is missing or not configured properly');
+      }
+      
+      // Set NODE_ENV to development for demo/testing purposes
+      // This enables fallback mode in the recommendation generator
+      process.env.NODE_ENV = 'development';
+      
+      // Fetch user's reading history if userId is provided but no recentlyRead list
+      let userRecentlyRead = recentlyRead || [];
+      if (userId && !userRecentlyRead.length) {
+        try {
+          // Get books the user has read or started reading
+          const userProgress = await storage.getReadingProgressByUser(parseInt(userId));
+          const bookIds: number[] = userProgress.map((progress: ReadingProgress) => progress.bookId);
+          
+          // Get book details for the IDs
+          const userBooks = await Promise.all(
+            bookIds.map(async (id: number) => {
+              const book = await storage.getBook(id);
+              return book ? book.title : null;
+            })
+          );
+          
+          // Filter out null values and add to recently read list
+          userRecentlyRead = userBooks.filter(Boolean) as string[];
+        } catch (error) {
+          console.error('Error fetching user reading history:', error);
+          // Continue with empty recently read list
+        }
+      }
+      
+      const recommendations = await generateBookRecommendations({
+        userId: userId ? parseInt(userId) : undefined,
+        genre,
+        recentlyRead: userRecentlyRead,
+        interests,
+        limit: limit ? parseInt(limit) : 5
+      });
+      
+      res.json(recommendations);
+    } catch (error) {
+      console.error('Error generating book recommendations:', error);
+      res.status(500).json({ 
+        message: 'Error generating book recommendations', 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
     }

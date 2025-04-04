@@ -14,6 +14,7 @@ import EditBook from "@/pages/dashboard/edit-book";
 import Analytics from "@/pages/dashboard/analytics";
 import MoodBoard from "@/pages/dashboard/mood-board";
 import Discover from "@/pages/discover";
+import Recommendations from "@/pages/recommendations";
 import { OnboardingProvider, OnboardingTour, WelcomeDialog } from "@/components/onboarding";
 import { useState, useEffect } from "react";
 
@@ -52,6 +53,7 @@ function App() {
             <Route path="/dashboard/analytics" component={Analytics} />
             <Route path="/dashboard/mood-board" component={MoodBoard} />
             <Route path="/discover" component={Discover} />
+            <Route path="/recommendations" component={Recommendations} />
             <Route component={NotFound} />
           </Switch>
           

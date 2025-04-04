@@ -32,6 +32,7 @@ export interface IStorage {
   
   // Reading progress methods
   getReadingProgress(userId: number, bookId: number): Promise<ReadingProgress | undefined>;
+  getReadingProgressByUser(userId: number): Promise<ReadingProgress[]>;
   createOrUpdateReadingProgress(progress: InsertReadingProgress): Promise<ReadingProgress>;
 }
 
@@ -207,6 +208,12 @@ export class MemStorage implements IStorage {
   async getReadingProgress(userId: number, bookId: number): Promise<ReadingProgress | undefined> {
     const key = `${userId}-${bookId}`;
     return this.readingProgresses.get(key);
+  }
+  
+  async getReadingProgressByUser(userId: number): Promise<ReadingProgress[]> {
+    return Array.from(this.readingProgresses.values())
+      .filter(progress => progress.userId === userId)
+      .sort((a, b) => new Date(b.lastRead).getTime() - new Date(a.lastRead).getTime());
   }
   
   async createOrUpdateReadingProgress(insertProgress: InsertReadingProgress): Promise<ReadingProgress> {

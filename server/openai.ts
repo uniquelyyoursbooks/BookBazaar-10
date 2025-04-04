@@ -204,3 +204,209 @@ export async function refineImagePrompt(basePrompt: string): Promise<string> {
     return basePrompt; // Return original prompt if refinement fails
   }
 }
+
+/**
+ * Interface for book recommendation parameters
+ */
+export interface BookRecommendationParams {
+  userId?: number;
+  genre?: string;
+  recentlyRead?: string[];
+  interests?: string[];
+  limit?: number;
+}
+
+/**
+ * Interface for a single book recommendation 
+ */
+export interface BookRecommendation {
+  title: string;
+  author: string;
+  genre: string;
+  description: string;
+  reasons: string[];
+  similarTo?: string;
+}
+
+/**
+ * Generate book recommendations based on user preferences and reading history
+ */
+export async function generateBookRecommendations(params: BookRecommendationParams): Promise<BookRecommendation[]> {
+  const { 
+    userId, 
+    genre = "", 
+    recentlyRead = [], 
+    interests = [], 
+    limit = 5 
+  } = params;
+  
+  // Create a prompt for the book recommendations
+  const promptText = `Generate ${limit} book recommendations for a reader with the following preferences:
+  ${genre ? `- Preferred genre: ${genre}` : ''}
+  ${recentlyRead.length ? `- Recently read books: ${recentlyRead.join(', ')}` : ''}
+  ${interests.length ? `- Expressed interests: ${interests.join(', ')}` : ''}
+  
+  Provide recommendations as a JSON array of objects with the following structure:
+  [
+    {
+      "title": "Book Title",
+      "author": "Author Name",
+      "genre": "Book Genre",
+      "description": "A brief compelling description of the book (1-2 sentences)",
+      "reasons": ["Reason 1 why this matches the reader's preferences", "Reason 2", ...],
+      "similarTo": "Title of a book from the recently read list that this recommendation is similar to (if applicable)"
+    },
+    ...
+  ]
+  
+  Make sure the recommendations are diverse but still match the reader's preferences.
+  Do not recommend books that are already in the recently read list.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: "system", content: "You are a knowledgeable literary expert who provides thoughtful book recommendations." },
+        { role: "user", content: promptText }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    // Parse the response
+    const content = response.choices[0].message.content || "{}";
+    const parsedResponse = JSON.parse(content);
+    
+    // Make sure we have an array of recommendations
+    const recommendations = Array.isArray(parsedResponse) 
+      ? parsedResponse 
+      : parsedResponse.recommendations || [];
+      
+    return recommendations as BookRecommendation[];
+  } catch (error) {
+    console.error("Error generating book recommendations:", error);
+    
+    // Return fallback recommendations for demo purposes in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      console.log("Using fallback book recommendations for demonstration purposes");
+      return generateFallbackRecommendations(params);
+    }
+    
+    throw new Error("Failed to generate book recommendations. Please try again later.");
+  }
+}
+
+/**
+ * Generate fallback book recommendations when API calls fail
+ */
+function generateFallbackRecommendations(params: BookRecommendationParams): BookRecommendation[] {
+  const { genre = "" } = params;
+  
+  // Basic genre-based fallback recommendations
+  const recommendations: Record<string, BookRecommendation[]> = {
+    "fantasy": [
+      {
+        title: "The Name of the Wind",
+        author: "Patrick Rothfuss",
+        genre: "Fantasy",
+        description: "A young arcanist struggles to survive while searching for answers about the mysterious beings who killed his family.",
+        reasons: ["Immersive world-building", "Complex magic system", "Well-developed characters"],
+      },
+      {
+        title: "The Fifth Season",
+        author: "N.K. Jemisin",
+        genre: "Fantasy",
+        description: "In a world constantly experiencing catastrophic climate change, certain people have the ability to control seismic activity.",
+        reasons: ["Award-winning novel", "Unique magic system", "Rich character development"],
+      },
+    ],
+    "science_fiction": [
+      {
+        title: "Project Hail Mary",
+        author: "Andy Weir",
+        genre: "Science Fiction",
+        description: "An amnesiac schoolteacher awakens on a spacecraft with two dead crewmates and must save humanity from extinction.",
+        reasons: ["Scientific accuracy", "Problem-solving narrative", "First contact story"],
+      },
+      {
+        title: "Hyperion",
+        author: "Dan Simmons",
+        genre: "Science Fiction",
+        description: "Seven pilgrims share their tales while traveling to the Time Tombs on Hyperion, where the mysterious and deadly Shrike awaits.",
+        reasons: ["Complex world-building", "Canterbury Tales-inspired structure", "Philosophical themes"],
+      },
+    ],
+    "mystery": [
+      {
+        title: "The Silent Patient",
+        author: "Alex Michaelides",
+        genre: "Mystery",
+        description: "A psychotherapist becomes obsessed with uncovering the story behind a famous painter who shot her husband and then never spoke again.",
+        reasons: ["Psychological suspense", "Unreliable narrator", "Shocking twist ending"],
+      },
+      {
+        title: "The Thursday Murder Club",
+        author: "Richard Osman",
+        genre: "Mystery",
+        description: "Four septuagenarians meet weekly to solve cold cases until a fresh murder occurs right on their doorstep.",
+        reasons: ["Charming characters", "Humorous tone", "Clever mystery plot"],
+      },
+    ],
+    "romance": [
+      {
+        title: "The Love Hypothesis",
+        author: "Ali Hazelwood",
+        genre: "Romance",
+        description: "A PhD candidate impulsively kisses a young professor to convince her friend she's dating, leading to a fake relationship with surprising chemistry.",
+        reasons: ["STEM setting", "Fake dating trope", "Witty dialogue"],
+      },
+      {
+        title: "Red, White & Royal Blue",
+        author: "Casey McQuiston",
+        genre: "Romance",
+        description: "The First Son of the United States falls in love with a British prince after their public rivalry turns into a secret friendship.",
+        reasons: ["LGBTQ+ representation", "Political setting", "Enemies-to-lovers trope"],
+      },
+    ],
+    "historical": [
+      {
+        title: "The Nightingale",
+        author: "Kristin Hannah",
+        genre: "Historical Fiction",
+        description: "Two sisters in Nazi-occupied France take different paths to survival and resistance during World War II.",
+        reasons: ["Strong female protagonists", "Well-researched historical setting", "Emotional impact"],
+      },
+      {
+        title: "Pachinko",
+        author: "Min Jin Lee",
+        genre: "Historical Fiction",
+        description: "A sweeping saga following four generations of a Korean family who move to Japan, facing discrimination and hardship.",
+        reasons: ["Multi-generational story", "Cultural insights", "Powerful examination of identity"],
+      },
+    ]
+  };
+
+  // Default to fantasy if no matching genre or genre not provided
+  const genreKey = genre.toLowerCase().replace(/[^a-z_]/g, '');
+  const result = recommendations[genreKey] || recommendations["fantasy"];
+  
+  // Add some generic recommendations if we don't have enough
+  const genericRecs = [
+    {
+      title: "The Midnight Library",
+      author: "Matt Haig",
+      genre: "Fiction",
+      description: "A woman discovers a library beyond the edge of life containing books with different versions of her life.",
+      reasons: ["Philosophical themes", "Exploration of regret and possibility", "Uplifting message"],
+    },
+    {
+      title: "Educated",
+      author: "Tara Westover",
+      genre: "Memoir",
+      description: "A woman raised by survivalists in the mountains of Idaho leaves home to educate herself, eventually earning a PhD from Cambridge University.",
+      reasons: ["Inspiring true story", "Exploration of education and self-determination", "Beautifully written"]
+    }
+  ];
+  
+  // Return a mix of genre-specific and generic recommendations
+  return [...result, ...genericRecs].slice(0, params.limit || 5);
+}
