@@ -168,8 +168,8 @@ export default function MoodBoardGenerator() {
                       <SelectGroup>
                         <SelectLabel>Genres</SelectLabel>
                         {BOOK_CATEGORIES.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
+                          <SelectItem key={category.value} value={category.value}>
+                            {category.label}
                           </SelectItem>
                         ))}
                       </SelectGroup>

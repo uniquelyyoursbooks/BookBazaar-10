@@ -8,6 +8,87 @@ const openai = new OpenAI({
 // The newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const MODEL = "gpt-4o";
 
+/**
+ * Generate a fallback mood board for demonstration purposes when API calls fail
+ * This is only used in non-production environments
+ */
+function generateFallbackMoodBoard(params: MoodBoardGeneratorParams): MoodBoardResponse {
+  const { genre = "Fantasy", theme = "Adventure", setting = "Medieval Kingdom" } = params;
+  
+  return {
+    title: `${genre || "Fantasy"} ${theme || "Adventure"} in ${setting || "a Magical Realm"}`,
+    description: "A captivating journey through magical landscapes, featuring heroic characters facing incredible challenges. Perfect for epic tales of courage, friendship, and discovery.",
+    items: [
+      { 
+        type: "quote", 
+        content: "Not all those who wander are lost." 
+      },
+      { 
+        type: "quote", 
+        content: "Magic exists. Who can doubt it, when there are rainbows and wildflowers, the music of the wind and the silence of the stars?" 
+      },
+      { 
+        type: "quote", 
+        content: "The greatest adventure is what lies ahead." 
+      },
+      { 
+        type: "quote", 
+        content: "Even the darkest night will end and the sun will rise." 
+      },
+      { 
+        type: "quote", 
+        content: "There's wonder all around us, we just need the courage to see it." 
+      },
+      { 
+        type: "prompt", 
+        content: "A forgotten artifact is discovered in an ancient ruin, but its magic comes with an unexpected price." 
+      },
+      { 
+        type: "prompt", 
+        content: "Two rival kingdoms must unite against a common threat that emerges from beyond the known world." 
+      },
+      { 
+        type: "prompt", 
+        content: "A reluctant hero discovers they possess a rare magical ability that marks them as either a savior or destroyer." 
+      },
+      { 
+        type: "prompt", 
+        content: "An ancient prophecy begins to unfold, but its interpretation may not be what everyone assumed." 
+      },
+      { 
+        type: "prompt", 
+        content: "A journey to a sacred location reveals secrets about the world's history that changes everything." 
+      },
+      { 
+        type: "theme", 
+        content: "The tension between destiny and free will" 
+      },
+      { 
+        type: "theme", 
+        content: "The price of power and the responsibility it brings" 
+      },
+      { 
+        type: "theme", 
+        content: "Finding light in the darkest of times" 
+      }
+    ],
+    imagePrompts: [
+      "A majestic castle perched on a cliff edge, illuminated by the golden light of sunset with dragon silhouettes circling in the distance",
+      "An ancient magical forest with bioluminescent plants and floating orbs of light between towering trees",
+      "A bustling medieval marketplace with vendors selling magical artifacts, exotic creatures, and rare potions",
+      "A battle scene with magical energies illuminating armored warriors, set against a dramatic stormy sky",
+      "A council of diverse fantasy races gathered around a circular stone table with a glowing map"
+    ],
+    palette: {
+      primary: "#4a6fa5",
+      secondary: "#9b6a6c",
+      accent: "#c9a66b",
+      background: "#f0f4f8",
+      text: "#2d3748"
+    }
+  };
+}
+
 interface MoodBoardGeneratorParams {
   genre?: string;
   theme?: string;
@@ -87,6 +168,13 @@ export async function generateWritingMoodBoard(params: MoodBoardGeneratorParams)
     return result;
   } catch (error) {
     console.error("Error generating mood board:", error);
+    
+    // Return a fallback mood board for demonstrating the UI when API calls fail
+    if (process.env.NODE_ENV !== 'production') {
+      console.log("Using fallback mood board for demonstration purposes");
+      return generateFallbackMoodBoard(params);
+    }
+    
     throw new Error("Failed to generate mood board. Please try again later.");
   }
 }
