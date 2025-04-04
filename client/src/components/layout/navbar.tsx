@@ -109,6 +109,9 @@ export const Navbar: React.FC = () => {
                     <DropdownMenuItem onClick={() => navigate("/dashboard/upload")}>
                       Upload Book
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/dashboard/mood-board")}>
+                      Writing Mood Board
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => navigate("/login")}>
                       Log out
@@ -158,6 +161,11 @@ export const Navbar: React.FC = () => {
             <Link href="/dashboard/upload">
               <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
                 Publish
+              </a>
+            </Link>
+            <Link href="/dashboard/mood-board">
+              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+                Mood Board
               </a>
             </Link>
           </div>

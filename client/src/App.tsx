@@ -12,6 +12,7 @@ import AuthorDashboard from "@/pages/dashboard/author-dashboard";
 import UploadBook from "@/pages/dashboard/upload-book";
 import EditBook from "@/pages/dashboard/edit-book";
 import Analytics from "@/pages/dashboard/analytics";
+import MoodBoard from "@/pages/dashboard/mood-board";
 import Discover from "@/pages/discover";
 import { OnboardingProvider, OnboardingTour, WelcomeDialog } from "@/components/onboarding";
 import { useState, useEffect } from "react";
@@ -49,6 +50,7 @@ function App() {
             <Route path="/dashboard/upload" component={UploadBook} />
             <Route path="/dashboard/edit/:id" component={EditBook} />
             <Route path="/dashboard/analytics" component={Analytics} />
+            <Route path="/dashboard/mood-board" component={MoodBoard} />
             <Route path="/discover" component={Discover} />
             <Route component={NotFound} />
           </Switch>

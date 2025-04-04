@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs";
 import { ZodError } from "zod";
 import { FileFilterCallback } from "multer";
+import { generateWritingMoodBoard, type MoodBoardResponse } from "./openai";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -451,6 +452,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     res.sendFile(filePath);
+  });
+  
+  // Writing Mood Board Generator
+  app.post('/api/mood-board/generate', async (req, res) => {
+    try {
+      const { genre, theme, setting, additionalContext } = req.body;
+      
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ message: 'OpenAI API key is missing' });
+      }
+      
+      const moodBoard = await generateWritingMoodBoard({
+        genre,
+        theme,
+        setting,
+        additionalContext
+      });
+      
+      res.json(moodBoard);
+    } catch (error) {
+      console.error('Error generating mood board:', error);
+      res.status(500).json({ 
+        message: 'Error generating mood board', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
   });
 
   const httpServer = createServer(app);
