@@ -25,11 +25,17 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
   const handleRoleSelection = (role: 'author' | 'reader') => {
     startOnboarding(role);
     onOpenChange(false);
+    // For demo purposes, mark as visited when dialog is closed after selection
+    localStorage.setItem('booknest_visited', 'true');
+    console.log(`Selected role: ${role}, starting onboarding tour...`);
   };
 
   const handleSkip = () => {
     skipOnboarding();
     onOpenChange(false);
+    // For demo purposes, mark as visited when dialog is closed after skipping
+    localStorage.setItem('booknest_visited', 'true');
+    console.log('Skipped onboarding');
   };
 
   return (

@@ -19,18 +19,19 @@ import { useState, useEffect } from "react";
 function App() {
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
   
-  // Check if user is new (for demo purposes, we'll show welcome dialog on first visit)
+  // For development/demo purposes, always show the welcome dialog on each app start
   useEffect(() => {
-    const hasVisitedBefore = localStorage.getItem('booknest_visited');
-    if (!hasVisitedBefore) {
-      // Set a small delay to ensure the UI is fully loaded
-      const timer = setTimeout(() => {
-        setShowWelcomeDialog(true);
-        localStorage.setItem('booknest_visited', 'true');
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
+    // Clear localStorage to simulate first visit every time (for demo purposes)
+    localStorage.removeItem('booknest_visited');
+    localStorage.removeItem('booknest_onboarding');
+    
+    // Set a small delay to ensure the UI is fully loaded
+    const timer = setTimeout(() => {
+      setShowWelcomeDialog(true);
+      // We'll set this flag when dialog is closed, not here
+    }, 1000);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -51,6 +52,16 @@ function App() {
             <Route path="/discover" component={Discover} />
             <Route component={NotFound} />
           </Switch>
+          
+          {/* Test button to manually trigger dialog (for development only) */}
+          <div className="fixed bottom-4 right-4 z-50">
+            <button 
+              onClick={() => setShowWelcomeDialog(true)} 
+              className="bg-secondary text-white px-4 py-2 rounded-md shadow-md"
+            >
+              Show Onboarding
+            </button>
+          </div>
         </main>
         <Footer />
         <Toaster />

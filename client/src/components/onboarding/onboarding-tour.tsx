@@ -91,14 +91,18 @@ export const OnboardingTour: React.FC = () => {
 
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { action, index, status, type } = data;
+    
+    console.log(`Joyride callback: ${type}, action: ${action}, status: ${status}, index: ${index}`);
 
     // Update step when user navigates
     if (type === 'step:after' && action === 'next') {
       setCurrentStep(index + 1);
+      console.log(`Moving to step ${index + 1}`);
     }
 
     // Handle tour completion
     if (([STATUS.FINISHED, STATUS.SKIPPED] as string[]).includes(status)) {
+      console.log(`Tour ended with status: ${status}`);
       completeOnboarding();
     }
   };
