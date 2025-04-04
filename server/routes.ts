@@ -12,7 +12,11 @@ import {
   type MoodBoardResponse,
   generateBookRecommendations,
   type BookRecommendation,
-  type BookRecommendationParams
+  type BookRecommendationParams,
+  generateBookCover,
+  generateBookCoverVariation,
+  type BookCoverParams,
+  type BookCoverResponse
 } from "./openai";
 
 // Configure multer for file uploads
@@ -540,6 +544,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error generating book recommendations:', error);
       res.status(500).json({ 
         message: 'Error generating book recommendations', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  // Book Cover Design AI Assistant
+  app.post('/api/book-covers/generate', async (req, res) => {
+    try {
+      const coverParams: BookCoverParams = req.body;
+      
+      if (!coverParams.title) {
+        return res.status(400).json({ message: 'Book title is required' });
+      }
+      
+      if (!process.env.OPENAI_API_KEY) {
+        console.warn('OPENAI_API_KEY is missing or not configured properly');
+        return res.status(500).json({ message: 'API key configuration error' });
+      }
+      
+      // Generate the book cover using AI
+      const coverResponse = await generateBookCover(coverParams);
+      
+      res.json(coverResponse);
+    } catch (error) {
+      console.error('Error generating book cover:', error);
+      res.status(500).json({ 
+        message: 'Error generating book cover', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+  
+  // Generate a book cover variation
+  app.post('/api/book-covers/variations', async (req, res) => {
+    try {
+      const { imageUrl, modificationPrompt } = req.body;
+      
+      if (!imageUrl || !modificationPrompt) {
+        return res.status(400).json({ 
+          message: 'Both image URL and modification prompt are required' 
+        });
+      }
+      
+      if (!process.env.OPENAI_API_KEY) {
+        console.warn('OPENAI_API_KEY is missing or not configured properly');
+        return res.status(500).json({ message: 'API key configuration error' });
+      }
+      
+      // Generate the book cover variation
+      const coverVariation = await generateBookCoverVariation(imageUrl, modificationPrompt);
+      
+      res.json(coverVariation);
+    } catch (error) {
+      console.error('Error generating book cover variation:', error);
+      res.status(500).json({ 
+        message: 'Error generating book cover variation', 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
     }

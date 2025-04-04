@@ -8,6 +8,9 @@ const openai = new OpenAI({
 // The newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const MODEL = "gpt-4o";
 
+// DALL-E model for image generation
+const IMAGE_MODEL = "dall-e-3";
+
 /**
  * Generate a fallback mood board for demonstration purposes when API calls fail
  * This is only used in non-production environments
@@ -292,6 +295,117 @@ export async function generateBookRecommendations(params: BookRecommendationPara
     }
     
     throw new Error("Failed to generate book recommendations. Please try again later.");
+  }
+}
+
+/**
+ * Interface for book cover generation parameters
+ */
+export interface BookCoverParams {
+  title: string;
+  author?: string;
+  genre?: string;
+  description?: string;
+  style?: string;
+  mood?: string;
+  color?: string;
+}
+
+/**
+ * Interface for book cover response
+ */
+export interface BookCoverResponse {
+  imageUrl: string;
+  prompt: string;
+}
+
+/**
+ * Generate an AI book cover based on provided parameters
+ */
+export async function generateBookCover(params: BookCoverParams): Promise<BookCoverResponse> {
+  const { 
+    title, 
+    author = "", 
+    genre = "", 
+    description = "", 
+    style = "modern", 
+    mood = "professional", 
+    color = ""
+  } = params;
+  
+  // First, generate an optimized prompt for the cover
+  let promptText = `Create a prompt for a book cover design for the book "${title}"`;
+  
+  if (author) promptText += ` by ${author}`;
+  if (genre) promptText += `, genre: ${genre}`;
+  if (description) promptText += `. The book is about: ${description}`;
+  if (style) promptText += `. Style should be ${style}`;
+  if (mood) promptText += `, mood should be ${mood}`;
+  if (color) promptText += `, prominently featuring the color ${color}`;
+  
+  promptText += `. The prompt should be detailed but concise, including visual elements, 
+  style, typography suggestions, and mood. The cover should look professional and 
+  commercially viable, like a book you'd see in a bookstore. Don't include text in the image itself.`;
+  
+  try {
+    // First, generate the optimized prompt for DALL-E
+    const promptResponse = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { 
+          role: "system", 
+          content: "You are an expert book cover designer and prompt engineer. You create concise, detailed prompts for AI image generators to create stunning book covers."
+        },
+        { role: "user", content: promptText }
+      ]
+    });
+    
+    const refinedPrompt = promptResponse.choices[0].message.content || "";
+    
+    // Now generate the actual image using DALL-E
+    const imageResponse = await openai.images.generate({
+      model: IMAGE_MODEL,
+      prompt: refinedPrompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+      style: "vivid"
+    });
+    
+    return {
+      imageUrl: imageResponse.data[0].url || "",
+      prompt: refinedPrompt
+    };
+  } catch (error) {
+    console.error("Error generating book cover:", error);
+    
+    // Return a fallback error response
+    throw new Error("Failed to generate book cover. Please try again later.");
+  }
+}
+
+/**
+ * Generate a variation of an existing book cover
+ */
+export async function generateBookCoverVariation(imageUrl: string, modificationPrompt: string): Promise<BookCoverResponse> {
+  try {
+    // Generate a variation with the modified prompt
+    const imageResponse = await openai.images.generate({
+      model: IMAGE_MODEL,
+      prompt: modificationPrompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+      style: "vivid"
+    });
+    
+    return {
+      imageUrl: imageResponse.data[0].url || "",
+      prompt: modificationPrompt
+    };
+  } catch (error) {
+    console.error("Error generating book cover variation:", error);
+    throw new Error("Failed to generate book cover variation. Please try again later.");
   }
 }
 

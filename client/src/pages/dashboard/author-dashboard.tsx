@@ -155,6 +155,57 @@ const AuthorDashboard: React.FC = () => {
         </Card>
       </div>
 
+      {/* Creator Tools */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-primary serif mb-4">Creator Tools</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="h-12 w-12 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center mb-4">
+                  <i className="fas fa-pen-fancy text-xl"></i>
+                </div>
+                <h3 className="text-lg font-medium mb-2">Writing Mood Board</h3>
+                <p className="text-neutral-600 text-sm mb-4">Get inspired with AI-generated themes, prompts, and visuals</p>
+                <Link href="/dashboard/mood-board">
+                  <Button className="w-full">Generate Mood Board</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="h-12 w-12 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center mb-4">
+                  <i className="fas fa-image text-xl"></i>
+                </div>
+                <h3 className="text-lg font-medium mb-2">Cover Designer</h3>
+                <p className="text-neutral-600 text-sm mb-4">Create professional book covers with AI assistance</p>
+                <Link href="/dashboard/cover-designer">
+                  <Button className="w-full">Design Book Cover</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="h-12 w-12 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center mb-4">
+                  <i className="fas fa-upload text-xl"></i>
+                </div>
+                <h3 className="text-lg font-medium mb-2">Publish Book</h3>
+                <p className="text-neutral-600 text-sm mb-4">Upload and share your work with readers worldwide</p>
+                <Link href="/dashboard/upload">
+                  <Button className="w-full bg-secondary hover:bg-secondary-dark">Upload Book</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      
       <div className="mb-8 flex justify-between items-center">
         <h2 className="text-2xl font-bold text-primary serif">Your Books</h2>
         <Link href="/dashboard/upload">
