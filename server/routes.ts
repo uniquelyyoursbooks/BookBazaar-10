@@ -725,7 +725,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Annotation routes
   app.get('/api/annotations', validateAuth, async (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = (req as any).user.id;
       const annotations = await storage.getAnnotationsByUser(userId);
       res.json(annotations);
     } catch (error) {
@@ -739,7 +739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/books/:bookId/annotations', validateAuth, async (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = (req as any).user.id;
       const { bookId } = req.params;
       const { page } = req.query;
       
@@ -762,7 +762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/annotations', validateAuth, validateRequest(insertAnnotationSchema), async (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = (req as any).user.id;
       const annotationData = { ...req.body, userId };
       const annotation = await storage.createAnnotation(annotationData);
       res.status(201).json(annotation);
@@ -777,7 +777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/annotations/:id', validateAuth, async (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = (req as any).user.id;
       const { id } = req.params;
       const annotation = await storage.getAnnotation(parseInt(id));
       
@@ -802,7 +802,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/annotations/:id', validateAuth, async (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = (req as any).user.id;
       const { id } = req.params;
       const annotation = await storage.getAnnotation(parseInt(id));
       
