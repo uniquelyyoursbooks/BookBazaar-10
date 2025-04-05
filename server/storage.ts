@@ -163,18 +163,57 @@ export class MemStorage implements IStorage {
   async createBook(insertBook: InsertBook): Promise<Book> {
     const id = this.bookIdCounter++;
     const now = new Date();
+    
+    // Ensure correct typing for the outline
+    const typedOutline: { chapters: { title: string, content: string }[] } | null = 
+      insertBook.outline ? {
+        chapters: Array.isArray((insertBook.outline as any).chapters) 
+          ? (insertBook.outline as any).chapters.map((chapter: any) => ({
+              title: typeof chapter.title === 'string' ? chapter.title : '',
+              content: typeof chapter.content === 'string' ? chapter.content : ''
+            })) 
+          : []
+      } : null;
+    
+    // Ensure correct typing for the metadata
+    const typedMetadata: {
+      targetAudience?: string,
+      readingLevel?: string,
+      themes?: string[],
+      mood?: string,
+      settings?: string[],
+      contentWarnings?: string[]
+    } | null = insertBook.metadata ? {
+      targetAudience: typeof insertBook.metadata.targetAudience === 'string' ? insertBook.metadata.targetAudience : '',
+      readingLevel: typeof insertBook.metadata.readingLevel === 'string' ? insertBook.metadata.readingLevel : '',
+      themes: Array.isArray(insertBook.metadata.themes) ? insertBook.metadata.themes : [],
+      mood: typeof insertBook.metadata.mood === 'string' ? insertBook.metadata.mood : '',
+      settings: Array.isArray(insertBook.metadata.settings) ? insertBook.metadata.settings : [],
+      contentWarnings: Array.isArray(insertBook.metadata.contentWarnings) ? insertBook.metadata.contentWarnings : []
+    } : null;
+    
+    // Create a properly typed Book with all required fields
     const book: Book = {
-      ...insertBook,
       id,
-      createdAt: now,
-      updatedAt: now,
+      title: insertBook.title,
+      authorId: insertBook.authorId,
+      description: insertBook.description,
+      filePath: insertBook.filePath,
       coverImage: insertBook.coverImage ?? null,
-      price: insertBook.price ?? "",
+      price: insertBook.price ?? "0.00",
       category: insertBook.category ?? "other",
       published: insertBook.published ?? false,
       isAiGenerated: insertBook.isAiGenerated ?? false,
+      isPublished: false,
+      isAIGenerated: false,
       aiGenerationPrompt: insertBook.aiGenerationPrompt ?? null,
-      outline: insertBook.outline ?? null
+      pdfPath: null,
+      epubPath: null,
+      outline: typedOutline,
+      keywords: Array.isArray(insertBook.keywords) ? insertBook.keywords : [],
+      metadata: typedMetadata,
+      createdAt: now,
+      updatedAt: now
     };
     this.books.set(id, book);
     return book;
@@ -184,9 +223,52 @@ export class MemStorage implements IStorage {
     const book = this.books.get(id);
     if (!book) return undefined;
     
+    // Handle special cases for typed properties
+    let typedOutline = book.outline;
+    if (bookUpdate.outline) {
+      typedOutline = {
+        chapters: Array.isArray((bookUpdate.outline as any).chapters) 
+          ? (bookUpdate.outline as any).chapters.map((chapter: any) => ({
+              title: typeof chapter.title === 'string' ? chapter.title : '',
+              content: typeof chapter.content === 'string' ? chapter.content : ''
+            }))
+          : []
+      };
+    }
+    
+    let typedMetadata = book.metadata;
+    if (bookUpdate.metadata) {
+      typedMetadata = {
+        targetAudience: typeof bookUpdate.metadata.targetAudience === 'string' ? bookUpdate.metadata.targetAudience : book.metadata?.targetAudience || '',
+        readingLevel: typeof bookUpdate.metadata.readingLevel === 'string' ? bookUpdate.metadata.readingLevel : book.metadata?.readingLevel || '',
+        themes: Array.isArray(bookUpdate.metadata.themes) ? bookUpdate.metadata.themes : book.metadata?.themes || [],
+        mood: typeof bookUpdate.metadata.mood === 'string' ? bookUpdate.metadata.mood : book.metadata?.mood || '',
+        settings: Array.isArray(bookUpdate.metadata.settings) ? bookUpdate.metadata.settings : book.metadata?.settings || [],
+        contentWarnings: Array.isArray(bookUpdate.metadata.contentWarnings) ? bookUpdate.metadata.contentWarnings : book.metadata?.contentWarnings || []
+      };
+    }
+    
+    // Create the updated book with proper typing, handling potential undefined values
     const updatedBook: Book = {
-      ...book,
-      ...bookUpdate,
+      id: book.id,
+      title: bookUpdate.title ?? book.title,
+      authorId: bookUpdate.authorId ?? book.authorId,
+      description: bookUpdate.description ?? book.description,
+      filePath: bookUpdate.filePath ?? book.filePath,
+      coverImage: bookUpdate.coverImage ?? book.coverImage,
+      price: bookUpdate.price ?? book.price,
+      category: bookUpdate.category ?? book.category,
+      published: bookUpdate.published ?? book.published,
+      isAiGenerated: bookUpdate.isAiGenerated ?? book.isAiGenerated,
+      isPublished: book.isPublished,
+      isAIGenerated: book.isAIGenerated,
+      aiGenerationPrompt: book.aiGenerationPrompt,
+      pdfPath: bookUpdate.pdfPath ?? book.pdfPath,
+      epubPath: bookUpdate.epubPath ?? book.epubPath,
+      outline: typedOutline,
+      metadata: typedMetadata,
+      keywords: bookUpdate.keywords ? (Array.isArray(bookUpdate.keywords) ? bookUpdate.keywords : book.keywords) : book.keywords,
+      createdAt: book.createdAt,
       updatedAt: new Date()
     };
     
@@ -204,9 +286,23 @@ export class MemStorage implements IStorage {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
   
-  async createAIGeneratedBook(insertBook: InsertBook): Promise<Book> {
-    // Mark the book as AI-generated
-    insertBook.isAiGenerated = true;
+  async createAIGeneratedBook(insertBookData: any): Promise<Book> {
+    // Create a properly typed InsertBook with all required fields
+    const insertBook: InsertBook = {
+      title: insertBookData.title,
+      authorId: insertBookData.authorId,
+      description: insertBookData.description,
+      filePath: insertBookData.filePath || "",
+      coverImage: insertBookData.coverImage,
+      price: insertBookData.price || "0.00",
+      category: insertBookData.category || "fiction",
+      published: insertBookData.published || false,
+      isAiGenerated: true,
+      metadata: insertBookData.metadata,
+      outline: insertBookData.outline,
+      keywords: insertBookData.keywords
+    };
+    
     return this.createBook(insertBook);
   }
   

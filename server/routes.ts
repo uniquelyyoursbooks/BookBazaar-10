@@ -880,6 +880,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Book Generation API - Generate a new book outline
+  app.post('/api/generate-book/outline', validateAuth, async (req, res) => {
+    try {
+      const params: BookGenerationParams = req.body;
+      
+      if (!params.title && !params.description && !params.genre) {
+        return res.status(400).json({ 
+          error: 'At least one of title, description, or genre is required' 
+        });
+      }
+      
+      const outlineData = await generateBookOutline(params);
+      res.json(outlineData);
+    } catch (error) {
+      console.error('Error generating book outline:', error);
+      res.status(500).json({ error: 'Failed to generate book outline' });
+    }
+  });
+
+  // Book Generation API - Generate a complete book
+  app.post('/api/generate-book', validateAuth, async (req, res) => {
+    try {
+      const params: BookGenerationParams = req.body;
+      
+      if (!params.title && !params.description && !params.genre) {
+        return res.status(400).json({ 
+          error: 'At least one of title, description, or genre is required'
+        });
+      }
+      
+      // This operation will take significant time
+      res.json({ 
+        message: 'Book generation started. This may take several minutes.', 
+        status: 'processing' 
+      });
+      
+      // Continue processing in the background
+      const generatedBook = await generateBook(params);
+      
+      // Store the generated book in the database
+      const userId = req.user.id;
+      
+      const bookData = {
+        title: generatedBook.title,
+        description: params.description || `AI-generated ${params.genre || ''} book`,
+        authorId: userId,
+        coverImage: null, // Will be generated separately
+        filePath: "", // Required field, will be updated later when generating PDF
+        category: "fiction" as const, // Default to fiction
+        price: "0.00", // Default price for free
+        published: false,
+        isAiGenerated: true,
+        metadata: {
+          aiGenerated: true,
+          coverPrompt: generatedBook.coverPrompt,
+          keywords: generatedBook.keywords,
+          targetAudience: generatedBook.metadata.targetAudience,
+          readingLevel: generatedBook.metadata.readingLevel,
+          themes: generatedBook.metadata.themes,
+          mood: generatedBook.metadata.mood,
+          settings: generatedBook.metadata.settings,
+          contentWarnings: generatedBook.metadata.contentWarnings || []
+        },
+        outline: generatedBook.outline,
+        keywords: generatedBook.keywords
+      };
+      
+      await storage.createAIGeneratedBook(bookData);
+      
+      // The client will need to poll for status or we could implement WebSockets for real-time updates
+    } catch (error) {
+      console.error('Error generating book:', error);
+      // Client won't see this error since we've already sent a response
+      // Could implement a status endpoint or WebSockets for error reporting
+    }
+  });
+
+  // Book Generation API - Get the status of a generating book
+  app.get('/api/generate-book/status/:bookId', validateAuth, async (req, res) => {
+    try {
+      const bookId = parseInt(req.params.bookId);
+      const book = await storage.getBook(bookId);
+      
+      if (!book) {
+        return res.status(404).json({ error: 'Book not found' });
+      }
+      
+      if (book.authorId !== req.user.id) {
+        return res.status(403).json({ error: 'You do not have permission to view this book' });
+      }
+      
+      // Check the book's generation status
+      // This is a simplified implementation - you might need a more sophisticated status tracking system
+      if (book.isAIGenerated) {
+        if (book.outline && book.outline.chapters && book.outline.chapters.length > 0) {
+          res.json({ status: 'completed', bookId: book.id });
+        } else {
+          res.json({ status: 'processing', bookId: book.id });
+        }
+      } else {
+        res.status(400).json({ error: 'This is not an AI-generated book' });
+      }
+    } catch (error) {
+      console.error('Error checking book generation status:', error);
+      res.status(500).json({ error: 'Failed to check book generation status' });
+    }
+  });
+
+  // Generate a PDF version of a book
+  app.post('/api/generate-book/pdf/:bookId', validateAuth, async (req, res) => {
+    try {
+      const bookId = parseInt(req.params.bookId);
+      const book = await storage.getBook(bookId);
+      
+      if (!book) {
+        return res.status(404).json({ error: 'Book not found' });
+      }
+      
+      if (book.authorId !== req.user.id) {
+        return res.status(403).json({ error: 'You do not have permission to generate a PDF for this book' });
+      }
+      
+      if (!book.isAIGenerated || !book.outline || !book.outline.chapters) {
+        return res.status(400).json({ error: 'This book cannot be converted to PDF' });
+      }
+      
+      // Prepare the book data for PDF generation
+      const bookData: BookGenerationResponse = {
+        title: book.title,
+        outline: book.outline,
+        coverPrompt: book.metadata?.coverPrompt || '',
+        keywords: book.metadata?.keywords || [],
+        metadata: {
+          targetAudience: book.metadata?.targetAudience || '',
+          readingLevel: book.metadata?.readingLevel || '',
+          themes: book.metadata?.themes || [],
+          mood: book.metadata?.mood || '',
+          settings: book.metadata?.settings || [],
+          contentWarnings: book.metadata?.contentWarnings || []
+        }
+      };
+      
+      // Generate a unique filename for the PDF
+      const timestamp = Date.now();
+      const filename = `${book.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${timestamp}.pdf`;
+      const outputPath = path.join(__dirname, '../uploads/books/pdf', filename);
+      
+      // Make sure the directory exists
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+      
+      // Generate the PDF
+      const pdfPath = await generateBookPDF(bookData, outputPath);
+      
+      // Update the book record with the PDF path
+      await storage.updateBook(bookId, {
+        filePath: path.relative(path.join(__dirname, '..'), pdfPath),
+        pdfPath: path.relative(path.join(__dirname, '..'), pdfPath)
+      });
+      
+      // Return the path to the generated PDF
+      res.json({ 
+        message: 'PDF generated successfully',
+        pdfPath: `/api/books/${bookId}/pdf` 
+      });
+    } catch (error) {
+      console.error('Error generating book PDF:', error);
+      res.status(500).json({ error: 'Failed to generate book PDF' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

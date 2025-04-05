@@ -52,8 +52,24 @@ export const books = pgTable("books", {
   category: bookCategoryEnum("category").default("other").notNull(),
   published: boolean("published").default(true).notNull(),
   isAiGenerated: boolean("is_ai_generated").default(false),
+  isPublished: boolean("is_published").default(false),
+  isAIGenerated: boolean("is_AI_generated").default(false),
   aiGenerationPrompt: text("ai_generation_prompt"),
+  pdfPath: text("pdf_path"),
+  epubPath: text("epub_path"),
   outline: json("outline").$type<{chapters: {title: string, content: string}[]}>(),
+  keywords: text("keywords").array(),
+  metadata: json("metadata").$type<{
+    targetAudience?: string,
+    readingLevel?: string,
+    themes?: string[],
+    mood?: string,
+    settings?: string[],
+    contentWarnings?: string[],
+    coverPrompt?: string,
+    keywords?: string[],
+    aiGenerated?: boolean
+  }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -68,8 +84,14 @@ export const insertBookSchema = createInsertSchema(books).pick({
   category: true,
   published: true,
   isAiGenerated: true,
+  isPublished: true,
+  isAIGenerated: true,
   aiGenerationPrompt: true,
-  outline: true
+  pdfPath: true,
+  epubPath: true,
+  outline: true,
+  keywords: true,
+  metadata: true
 });
 
 // Review schema

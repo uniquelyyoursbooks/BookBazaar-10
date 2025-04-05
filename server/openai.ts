@@ -574,6 +574,15 @@ export interface BookGenerationResponse {
     }[];
   };
   coverPrompt: string;
+  keywords: string[];
+  metadata: {
+    targetAudience: string;
+    readingLevel: string;
+    themes: string[];
+    mood: string;
+    settings: string[];
+    contentWarnings?: string[];
+  };
 }
 
 /**
@@ -727,6 +736,53 @@ export async function generateBook(params: BookGenerationParams): Promise<BookGe
     
     const coverPrompt = coverPromptResponse.choices[0].message.content || "";
     
+    // Generate metadata and keywords
+    const metadataResponse = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { 
+          role: "system", 
+          content: "You are a literary metadata specialist who creates detailed, accurate book metadata and keywords." 
+        },
+        { 
+          role: "user", 
+          content: `
+          Generate comprehensive metadata and keywords for the ${params.genre || ""} book "${outlineData.title}".
+          Book description: ${params.description || ""}
+          Target audience: ${params.targetAudience || "general"}
+          Tone: ${params.tone || "balanced"}
+          
+          Based on the outline and description, provide the following in JSON format:
+          1. A list of relevant keywords (10-15 terms) that would help with discoverability
+          2. Metadata including:
+             - Target audience (age range and demographics)
+             - Reading level
+             - Themes (3-5 main themes)
+             - Mood (overall emotional tone)
+             - Settings (locations where the story takes place)
+             - Content warnings (if applicable)
+          
+          Format your response as a JSON object with this structure:
+          {
+            "keywords": ["keyword1", "keyword2", ...],
+            "metadata": {
+              "targetAudience": "description of target audience",
+              "readingLevel": "beginner/intermediate/advanced or age range",
+              "themes": ["theme1", "theme2", ...],
+              "mood": "primary mood of the book",
+              "settings": ["setting1", "setting2", ...],
+              "contentWarnings": ["warning1", "warning2", ...] (if applicable, otherwise empty array)
+            }
+          }
+          `
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+    
+    const metadataContent = metadataResponse.choices[0].message.content || "{}";
+    const metadataJson = JSON.parse(metadataContent);
+    
     // Generate each chapter in sequence
     const chapters = [];
     let previousChapterSummary = "";
@@ -759,7 +815,16 @@ export async function generateBook(params: BookGenerationParams): Promise<BookGe
       outline: {
         chapters: chapters
       },
-      coverPrompt
+      coverPrompt,
+      keywords: metadataJson.keywords || [],
+      metadata: {
+        targetAudience: metadataJson.metadata?.targetAudience || "",
+        readingLevel: metadataJson.metadata?.readingLevel || "",
+        themes: metadataJson.metadata?.themes || [],
+        mood: metadataJson.metadata?.mood || "",
+        settings: metadataJson.metadata?.settings || [],
+        contentWarnings: metadataJson.metadata?.contentWarnings || []
+      }
     };
   } catch (error) {
     console.error("Error generating book:", error);
@@ -774,6 +839,24 @@ export async function generateBookPDF(book: BookGenerationResponse, outputPath: 
   try {
     // Create a text version of the book that can be converted to PDF
     let bookText = `# ${book.title}\n\n`;
+    
+    // Add metadata section
+    bookText += `## Metadata\n\n`;
+    bookText += `**Target Audience:** ${book.metadata.targetAudience}\n\n`;
+    bookText += `**Reading Level:** ${book.metadata.readingLevel}\n\n`;
+    bookText += `**Themes:** ${book.metadata.themes.join(', ')}\n\n`;
+    bookText += `**Mood:** ${book.metadata.mood}\n\n`;
+    bookText += `**Settings:** ${book.metadata.settings.join(', ')}\n\n`;
+    
+    if (book.metadata.contentWarnings && book.metadata.contentWarnings.length > 0) {
+      bookText += `**Content Warnings:** ${book.metadata.contentWarnings.join(', ')}\n\n`;
+    }
+    
+    // Add keywords
+    bookText += `**Keywords:** ${book.keywords.join(', ')}\n\n`;
+    
+    // Add a separator before the content
+    bookText += `---\n\n`;
     
     // Add each chapter
     for (const chapter of book.outline.chapters) {
