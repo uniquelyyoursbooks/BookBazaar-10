@@ -103,7 +103,11 @@ const WritingPrompts: React.FC = () => {
     setGeneratedPrompts(null);
     
     try {
-      const response = await apiRequest("POST", "/api/writing-prompts/generate", values);
+      const response = await apiRequest({
+        method: "POST",
+        url: "/api/writing-prompts/generate",
+        data: values
+      });
       const data = await response.json();
       setGeneratedPrompts(data);
       toast({
