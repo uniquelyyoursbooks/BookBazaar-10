@@ -46,38 +46,26 @@ export const Navbar: React.FC = () => {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/">
-                <div className="flex items-center cursor-pointer">
-                  <i className="fas fa-book-open text-secondary text-xl mr-2"></i>
-                  <span className="text-xl font-bold text-primary serif">BookNest</span>
-                </div>
+              <Link href="/" className="flex items-center cursor-pointer">
+                <i className="fas fa-book-open text-secondary text-xl mr-2"></i>
+                <span className="text-xl font-bold text-primary serif">BookNest</span>
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-8">
-              <Link href="/discover">
-                <a className={`px-3 py-2 text-sm font-medium books-discovery ${isActive("/discover")}`}>
-                  Discover
-                </a>
+              <Link href="/discover" className={`px-3 py-2 text-sm font-medium books-discovery ${isActive("/discover")}`}>
+                Discover
               </Link>
-              <Link href="/discover?category=all">
-                <a className={`px-3 py-2 text-sm font-medium ${isActive("/discover?category=all")}`}>
-                  Browse
-                </a>
+              <Link href="/discover?category=all" className={`px-3 py-2 text-sm font-medium ${isActive("/discover?category=all")}`}>
+                Browse
               </Link>
-              <Link href="/discover?view=authors">
-                <a className={`px-3 py-2 text-sm font-medium ${isActive("/discover?view=authors")}`}>
-                  Authors
-                </a>
+              <Link href="/discover?view=authors" className={`px-3 py-2 text-sm font-medium ${isActive("/discover?view=authors")}`}>
+                Authors
               </Link>
-              <Link href="/recommendations">
-                <a className={`px-3 py-2 text-sm font-medium ${isActive("/recommendations")}`}>
-                  Recommendations
-                </a>
+              <Link href="/recommendations" className={`px-3 py-2 text-sm font-medium ${isActive("/recommendations")}`}>
+                Recommendations
               </Link>
-              <Link href="/dashboard/upload">
-                <a className={`px-3 py-2 text-sm font-medium upload-book ${isActive("/dashboard/upload")}`}>
-                  Publish
-                </a>
+              <Link href="/dashboard/upload" className={`px-3 py-2 text-sm font-medium upload-book ${isActive("/dashboard/upload")}`}>
+                Publish
               </Link>
             </div>
           </div>
@@ -127,11 +115,12 @@ export const Navbar: React.FC = () => {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <Link href="/login">
-                  <Button className="bg-secondary hover:bg-secondary-dark text-white user-profile">
-                    Sign In
-                  </Button>
-                </Link>
+                <Button 
+                  onClick={() => navigate("/login")}
+                  className="bg-secondary hover:bg-secondary-dark text-white user-profile"
+                >
+                  Sign In
+                </Button>
               )}
             </div>
           </div>
@@ -151,40 +140,26 @@ export const Navbar: React.FC = () => {
       {mobileMenuOpen && (
         <div className="sm:hidden">
           <div className="pt-2 pb-3 space-y-1">
-            <Link href="/discover">
-              <a className="block pl-3 pr-4 py-2 border-l-4 border-secondary text-neutral-700 bg-neutral-50 font-medium">
-                Discover
-              </a>
+            <Link href="/discover" className="block pl-3 pr-4 py-2 border-l-4 border-secondary text-neutral-700 bg-neutral-50 font-medium">
+              Discover
             </Link>
-            <Link href="/discover?category=all">
-              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
-                Browse
-              </a>
+            <Link href="/discover?category=all" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+              Browse
             </Link>
-            <Link href="/discover?view=authors">
-              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
-                Authors
-              </a>
+            <Link href="/discover?view=authors" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+              Authors
             </Link>
-            <Link href="/recommendations">
-              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
-                Recommendations
-              </a>
+            <Link href="/recommendations" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+              Recommendations
             </Link>
-            <Link href="/dashboard/upload">
-              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
-                Publish
-              </a>
+            <Link href="/dashboard/upload" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+              Publish
             </Link>
-            <Link href="/dashboard/mood-board">
-              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
-                Mood Board
-              </a>
+            <Link href="/dashboard/mood-board" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+              Mood Board
             </Link>
-            <Link href="/dashboard/cover-designer">
-              <a className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
-                Cover Designer
-              </a>
+            <Link href="/dashboard/cover-designer" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+              Cover Designer
             </Link>
           </div>
           <div className="pt-4 pb-3 border-t border-neutral-200">
@@ -203,11 +178,12 @@ export const Navbar: React.FC = () => {
               </form>
             </div>
             <div className="mt-3 space-y-1">
-              <Link href="/login">
-                <a className="block px-4 py-2 text-center bg-secondary text-white rounded-md">
-                  Sign In
-                </a>
-              </Link>
+              <button 
+                onClick={() => navigate("/login")} 
+                className="block w-full px-4 py-2 text-center bg-secondary text-white rounded-md"
+              >
+                Sign In
+              </button>
             </div>
           </div>
         </div>
