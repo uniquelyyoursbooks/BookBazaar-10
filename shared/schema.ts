@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, json, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, json, timestamp, pgEnum, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -90,6 +90,7 @@ export const readingProgresses = pgTable("reading_progresses", {
   bookId: integer("book_id").notNull(),
   currentPage: integer("current_page").default(1).notNull(),
   totalPages: integer("total_pages").notNull(),
+  completionPercentage: integer("completion_percentage").default(0).notNull(),
   lastRead: timestamp("last_read").defaultNow().notNull(),
 });
 
@@ -97,7 +98,57 @@ export const insertReadingProgressSchema = createInsertSchema(readingProgresses)
   userId: true,
   bookId: true,
   currentPage: true,
-  totalPages: true
+  totalPages: true,
+  completionPercentage: true,
+  lastRead: true
+});
+
+// Bookmark schema
+export const bookmarks = pgTable("bookmarks", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  bookId: integer("book_id").notNull(),
+  pageNumber: integer("page_number").notNull(),
+  title: text("title"),
+  description: text("description"),
+  color: text("color").default("#FFD700").notNull(), // Default to gold color
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertBookmarkSchema = createInsertSchema(bookmarks).pick({
+  userId: true,
+  bookId: true,
+  pageNumber: true,
+  title: true,
+  description: true,
+  color: true
+});
+
+// Annotation schema
+export const annotations = pgTable("annotations", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  bookId: integer("book_id").notNull(),
+  pageNumber: integer("page_number").notNull(),
+  content: text("content").notNull(),
+  textSelection: text("text_selection"), // The text that was highlighted/selected
+  startOffset: integer("start_offset"), // Starting character position of the annotation within the page
+  endOffset: integer("end_offset"), // Ending character position of the annotation within the page
+  color: text("color").default("#FFFF00").notNull(), // Default to yellow highlight
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAnnotationSchema = createInsertSchema(annotations).pick({
+  userId: true,
+  bookId: true,
+  pageNumber: true,
+  content: true,
+  textSelection: true,
+  startOffset: true,
+  endOffset: true,
+  color: true
 });
 
 // Type exports
@@ -112,6 +163,12 @@ export type InsertReview = z.infer<typeof insertReviewSchema>;
 
 export type ReadingProgress = typeof readingProgresses.$inferSelect;
 export type InsertReadingProgress = z.infer<typeof insertReadingProgressSchema>;
+
+export type Bookmark = typeof bookmarks.$inferSelect;
+export type InsertBookmark = z.infer<typeof insertBookmarkSchema>;
+
+export type Annotation = typeof annotations.$inferSelect;
+export type InsertAnnotation = z.infer<typeof insertAnnotationSchema>;
 
 // Extended category schema with display names
 export const BOOK_CATEGORIES = [

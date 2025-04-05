@@ -1,7 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertBookSchema, insertReviewSchema, insertReadingProgressSchema, ReadingProgress } from "@shared/schema";
+import { 
+  insertUserSchema, insertBookSchema, insertReviewSchema, insertReadingProgressSchema, 
+  insertBookmarkSchema, insertAnnotationSchema,
+  ReadingProgress 
+} from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -134,6 +138,23 @@ function validateRequest<T>(schema: any) {
       }
     }
   };
+}
+
+// Authentication middleware
+function validateAuth(req: Request, res: Response, next: NextFunction) {
+  // For now, we'll implement a simple auth check
+  // In a real application, you would verify JWT or session
+  const userId = req.headers['user-id'];
+  
+  if (!userId) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+  
+  // Add user to request for convenience
+  // Using type assertion since we know this will be defined
+  (req as any).user = { id: parseInt(userId as string) };
+  
+  next();
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -600,6 +621,205 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error generating book cover variation:', error);
       res.status(500).json({ 
         message: 'Error generating book cover variation', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  // Bookmark routes
+  app.get('/api/bookmarks', validateAuth, async (req, res) => {
+    try {
+      // After validateAuth, we can assert req.user exists
+      const userId = req.user!.id;
+      const bookmarks = await storage.getBookmarksByUser(userId);
+      res.json(bookmarks);
+    } catch (error) {
+      console.error('Error fetching bookmarks:', error);
+      res.status(500).json({ 
+        message: 'Error fetching bookmarks', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.get('/api/books/:bookId/bookmarks', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { bookId } = req.params;
+      const bookmarks = await storage.getBookmarksByUserAndBook(userId, parseInt(bookId));
+      res.json(bookmarks);
+    } catch (error) {
+      console.error('Error fetching bookmarks for book:', error);
+      res.status(500).json({ 
+        message: 'Error fetching bookmarks for book', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.post('/api/bookmarks', validateAuth, validateRequest(insertBookmarkSchema), async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const bookmarkData = { ...req.body, userId };
+      const bookmark = await storage.createBookmark(bookmarkData);
+      res.status(201).json(bookmark);
+    } catch (error) {
+      console.error('Error creating bookmark:', error);
+      res.status(500).json({ 
+        message: 'Error creating bookmark', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.put('/api/bookmarks/:id', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { id } = req.params;
+      const bookmark = await storage.getBookmark(parseInt(id));
+      
+      if (!bookmark) {
+        return res.status(404).json({ message: 'Bookmark not found' });
+      }
+      
+      if (bookmark.userId !== userId) {
+        return res.status(403).json({ message: 'Unauthorized access to bookmark' });
+      }
+      
+      const updatedBookmark = await storage.updateBookmark(parseInt(id), req.body);
+      res.json(updatedBookmark);
+    } catch (error) {
+      console.error('Error updating bookmark:', error);
+      res.status(500).json({ 
+        message: 'Error updating bookmark', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.delete('/api/bookmarks/:id', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { id } = req.params;
+      const bookmark = await storage.getBookmark(parseInt(id));
+      
+      if (!bookmark) {
+        return res.status(404).json({ message: 'Bookmark not found' });
+      }
+      
+      if (bookmark.userId !== userId) {
+        return res.status(403).json({ message: 'Unauthorized access to bookmark' });
+      }
+      
+      await storage.deleteBookmark(parseInt(id));
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting bookmark:', error);
+      res.status(500).json({ 
+        message: 'Error deleting bookmark', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  // Annotation routes
+  app.get('/api/annotations', validateAuth, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const annotations = await storage.getAnnotationsByUser(userId);
+      res.json(annotations);
+    } catch (error) {
+      console.error('Error fetching annotations:', error);
+      res.status(500).json({ 
+        message: 'Error fetching annotations', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.get('/api/books/:bookId/annotations', validateAuth, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { bookId } = req.params;
+      const { page } = req.query;
+      
+      let annotations;
+      if (page) {
+        annotations = await storage.getAnnotationsByPage(userId, parseInt(bookId), parseInt(page as string));
+      } else {
+        annotations = await storage.getAnnotationsByUserAndBook(userId, parseInt(bookId));
+      }
+      
+      res.json(annotations);
+    } catch (error) {
+      console.error('Error fetching annotations for book:', error);
+      res.status(500).json({ 
+        message: 'Error fetching annotations for book', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.post('/api/annotations', validateAuth, validateRequest(insertAnnotationSchema), async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const annotationData = { ...req.body, userId };
+      const annotation = await storage.createAnnotation(annotationData);
+      res.status(201).json(annotation);
+    } catch (error) {
+      console.error('Error creating annotation:', error);
+      res.status(500).json({ 
+        message: 'Error creating annotation', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.put('/api/annotations/:id', validateAuth, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const annotation = await storage.getAnnotation(parseInt(id));
+      
+      if (!annotation) {
+        return res.status(404).json({ message: 'Annotation not found' });
+      }
+      
+      if (annotation.userId !== userId) {
+        return res.status(403).json({ message: 'Unauthorized access to annotation' });
+      }
+      
+      const updatedAnnotation = await storage.updateAnnotation(parseInt(id), req.body);
+      res.json(updatedAnnotation);
+    } catch (error) {
+      console.error('Error updating annotation:', error);
+      res.status(500).json({ 
+        message: 'Error updating annotation', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  app.delete('/api/annotations/:id', validateAuth, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const annotation = await storage.getAnnotation(parseInt(id));
+      
+      if (!annotation) {
+        return res.status(404).json({ message: 'Annotation not found' });
+      }
+      
+      if (annotation.userId !== userId) {
+        return res.status(403).json({ message: 'Unauthorized access to annotation' });
+      }
+      
+      await storage.deleteAnnotation(parseInt(id));
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting annotation:', error);
+      res.status(500).json({ 
+        message: 'Error deleting annotation', 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
     }

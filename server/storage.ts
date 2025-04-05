@@ -2,7 +2,9 @@ import {
   users, type User, type InsertUser,
   books, type Book, type InsertBook,
   reviews, type Review, type InsertReview,
-  readingProgresses, type ReadingProgress, type InsertReadingProgress
+  readingProgresses, type ReadingProgress, type InsertReadingProgress,
+  bookmarks, type Bookmark, type InsertBookmark,
+  annotations, type Annotation, type InsertAnnotation
 } from "@shared/schema";
 
 export interface IStorage {
@@ -34,6 +36,25 @@ export interface IStorage {
   getReadingProgress(userId: number, bookId: number): Promise<ReadingProgress | undefined>;
   getReadingProgressByUser(userId: number): Promise<ReadingProgress[]>;
   createOrUpdateReadingProgress(progress: InsertReadingProgress): Promise<ReadingProgress>;
+  
+  // Bookmark methods
+  getBookmark(id: number): Promise<Bookmark | undefined>;
+  getBookmarksByUser(userId: number): Promise<Bookmark[]>;
+  getBookmarksByBook(bookId: number): Promise<Bookmark[]>;
+  getBookmarksByUserAndBook(userId: number, bookId: number): Promise<Bookmark[]>;
+  createBookmark(bookmark: InsertBookmark): Promise<Bookmark>;
+  updateBookmark(id: number, bookmark: Partial<InsertBookmark>): Promise<Bookmark | undefined>;
+  deleteBookmark(id: number): Promise<boolean>;
+  
+  // Annotation methods
+  getAnnotation(id: number): Promise<Annotation | undefined>;
+  getAnnotationsByUser(userId: number): Promise<Annotation[]>;
+  getAnnotationsByBook(bookId: number): Promise<Annotation[]>;
+  getAnnotationsByUserAndBook(userId: number, bookId: number): Promise<Annotation[]>;
+  getAnnotationsByPage(userId: number, bookId: number, pageNumber: number): Promise<Annotation[]>;
+  createAnnotation(annotation: InsertAnnotation): Promise<Annotation>;
+  updateAnnotation(id: number, annotation: Partial<InsertAnnotation>): Promise<Annotation | undefined>;
+  deleteAnnotation(id: number): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -41,22 +62,30 @@ export class MemStorage implements IStorage {
   private books: Map<number, Book>;
   private reviews: Map<number, Review>;
   private readingProgresses: Map<string, ReadingProgress>;
+  private bookmarks: Map<number, Bookmark>;
+  private annotations: Map<number, Annotation>;
   
   private userIdCounter: number;
   private bookIdCounter: number;
   private reviewIdCounter: number;
   private readingProgressIdCounter: number;
+  private bookmarkIdCounter: number;
+  private annotationIdCounter: number;
   
   constructor() {
     this.users = new Map();
     this.books = new Map();
     this.reviews = new Map();
     this.readingProgresses = new Map();
+    this.bookmarks = new Map();
+    this.annotations = new Map();
     
     this.userIdCounter = 1;
     this.bookIdCounter = 1;
     this.reviewIdCounter = 1;
     this.readingProgressIdCounter = 1;
+    this.bookmarkIdCounter = 1;
+    this.annotationIdCounter = 1;
     
     // Create a default admin user
     this.createUser({
@@ -88,7 +117,9 @@ export class MemStorage implements IStorage {
     const user: User = { 
       ...insertUser, 
       id, 
-      createdAt: now
+      createdAt: now,
+      bio: insertUser.bio ?? null,
+      isAuthor: insertUser.isAuthor ?? false
     };
     this.users.set(id, user);
     return user;
@@ -134,7 +165,11 @@ export class MemStorage implements IStorage {
       ...insertBook,
       id,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      coverImage: insertBook.coverImage ?? null,
+      price: insertBook.price ?? "",
+      category: insertBook.category ?? "other",
+      published: insertBook.published ?? false
     };
     this.books.set(id, book);
     return book;
@@ -181,7 +216,8 @@ export class MemStorage implements IStorage {
     const review: Review = {
       ...insertReview,
       id,
-      createdAt: now
+      createdAt: now,
+      comment: insertReview.comment ?? null
     };
     this.reviews.set(id, review);
     return review;
@@ -221,9 +257,14 @@ export class MemStorage implements IStorage {
     const existing = this.readingProgresses.get(key);
     
     if (existing) {
+      // Ensure we have all the required fields with proper types
       const updatedProgress: ReadingProgress = {
-        ...existing,
-        currentPage: insertProgress.currentPage,
+        id: existing.id,
+        userId: existing.userId,
+        bookId: existing.bookId,
+        currentPage: insertProgress.currentPage ?? existing.currentPage,
+        totalPages: insertProgress.totalPages ?? existing.totalPages,
+        completionPercentage: insertProgress.completionPercentage !== undefined ? insertProgress.completionPercentage : existing.completionPercentage,
         lastRead: new Date()
       };
       this.readingProgresses.set(key, updatedProgress);
@@ -231,14 +272,159 @@ export class MemStorage implements IStorage {
     } else {
       const id = this.readingProgressIdCounter++;
       const now = new Date();
+      // Ensure we have all the required fields with proper types
       const progress: ReadingProgress = {
-        ...insertProgress,
         id,
+        userId: insertProgress.userId,
+        bookId: insertProgress.bookId,
+        currentPage: insertProgress.currentPage ?? 1,
+        totalPages: insertProgress.totalPages,
+        completionPercentage: insertProgress.completionPercentage !== undefined ? insertProgress.completionPercentage : 0,
         lastRead: now
       };
       this.readingProgresses.set(key, progress);
       return progress;
     }
+  }
+  
+  // Bookmark methods
+  async getBookmark(id: number): Promise<Bookmark | undefined> {
+    return this.bookmarks.get(id);
+  }
+  
+  async getBookmarksByUser(userId: number): Promise<Bookmark[]> {
+    return Array.from(this.bookmarks.values())
+      .filter(bookmark => bookmark.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+  
+  async getBookmarksByBook(bookId: number): Promise<Bookmark[]> {
+    return Array.from(this.bookmarks.values())
+      .filter(bookmark => bookmark.bookId === bookId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+  
+  async getBookmarksByUserAndBook(userId: number, bookId: number): Promise<Bookmark[]> {
+    return Array.from(this.bookmarks.values())
+      .filter(bookmark => bookmark.userId === userId && bookmark.bookId === bookId)
+      .sort((a, b) => a.pageNumber - b.pageNumber);
+  }
+  
+  async createBookmark(insertBookmark: InsertBookmark): Promise<Bookmark> {
+    const id = this.bookmarkIdCounter++;
+    const now = new Date();
+    const bookmark: Bookmark = {
+      ...insertBookmark,
+      id,
+      createdAt: now,
+      updatedAt: now,
+      title: insertBookmark.title ?? null,
+      description: insertBookmark.description ?? null,
+      color: insertBookmark.color ?? "#3498db" // Default blue color
+    };
+    this.bookmarks.set(id, bookmark);
+    return bookmark;
+  }
+  
+  async updateBookmark(id: number, bookmarkUpdate: Partial<InsertBookmark>): Promise<Bookmark | undefined> {
+    const bookmark = this.bookmarks.get(id);
+    if (!bookmark) return undefined;
+    
+    const updatedBookmark: Bookmark = {
+      ...bookmark,
+      ...bookmarkUpdate,
+      updatedAt: new Date()
+    };
+    
+    this.bookmarks.set(id, updatedBookmark);
+    return updatedBookmark;
+  }
+  
+  async deleteBookmark(id: number): Promise<boolean> {
+    return this.bookmarks.delete(id);
+  }
+  
+  // Annotation methods
+  async getAnnotation(id: number): Promise<Annotation | undefined> {
+    return this.annotations.get(id);
+  }
+  
+  async getAnnotationsByUser(userId: number): Promise<Annotation[]> {
+    return Array.from(this.annotations.values())
+      .filter(annotation => annotation.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+  
+  async getAnnotationsByBook(bookId: number): Promise<Annotation[]> {
+    return Array.from(this.annotations.values())
+      .filter(annotation => annotation.bookId === bookId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+  
+  async getAnnotationsByUserAndBook(userId: number, bookId: number): Promise<Annotation[]> {
+    return Array.from(this.annotations.values())
+      .filter(annotation => annotation.userId === userId && annotation.bookId === bookId)
+      .sort((a, b) => {
+        // First sort by page number
+        if (a.pageNumber !== b.pageNumber) {
+          return a.pageNumber - b.pageNumber;
+        }
+        
+        // Then by startOffset, handling null values
+        const aOffset = a.startOffset ?? 0;
+        const bOffset = b.startOffset ?? 0;
+        return aOffset - bOffset;
+      });
+  }
+  
+  async getAnnotationsByPage(userId: number, bookId: number, pageNumber: number): Promise<Annotation[]> {
+    return Array.from(this.annotations.values())
+      .filter(annotation => 
+        annotation.userId === userId && 
+        annotation.bookId === bookId && 
+        annotation.pageNumber === pageNumber
+      )
+      .sort((a, b) => {
+        // Sort by startOffset, handling null values
+        const aOffset = a.startOffset ?? 0;
+        const bOffset = b.startOffset ?? 0;
+        return aOffset - bOffset;
+      });
+  }
+  
+  async createAnnotation(insertAnnotation: InsertAnnotation): Promise<Annotation> {
+    const id = this.annotationIdCounter++;
+    const now = new Date();
+    const annotation: Annotation = {
+      ...insertAnnotation,
+      id,
+      createdAt: now,
+      updatedAt: now,
+      color: insertAnnotation.color ?? "#ffeb3b", // Default yellow highlight color
+      textSelection: insertAnnotation.textSelection ?? null,
+      startOffset: insertAnnotation.startOffset ?? null,
+      endOffset: insertAnnotation.endOffset ?? null
+    };
+    this.annotations.set(id, annotation);
+    return annotation;
+  }
+  
+  async updateAnnotation(id: number, annotationUpdate: Partial<InsertAnnotation>): Promise<Annotation | undefined> {
+    const annotation = this.annotations.get(id);
+    if (!annotation) return undefined;
+    
+    const updatedAnnotation: Annotation = {
+      ...annotation,
+      ...annotationUpdate,
+      updatedAt: new Date()
+    };
+    
+    this.annotations.set(id, updatedAnnotation);
+    return updatedAnnotation;
+  }
+  
+  async deleteAnnotation(id: number): Promise<boolean> {
+    return this.annotations.delete(id);
   }
 }
 
