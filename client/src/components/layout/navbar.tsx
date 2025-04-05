@@ -108,6 +108,9 @@ export const Navbar: React.FC = () => {
                     <DropdownMenuItem onClick={() => navigate("/dashboard/cover-designer")}>
                       Cover Designer
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/dashboard/writing-prompts")}>
+                      Writing Prompts
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/dashboard/kdp-export")}>
                       KDP Export
                     </DropdownMenuItem>
@@ -163,6 +166,9 @@ export const Navbar: React.FC = () => {
             </Link>
             <Link href="/dashboard/cover-designer" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
               Cover Designer
+            </Link>
+            <Link href="/dashboard/writing-prompts" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
+              Writing Prompts
             </Link>
             <Link href="/dashboard/kdp-export" className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700 font-medium">
               KDP Export

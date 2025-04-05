@@ -158,7 +158,7 @@ const AuthorDashboard: React.FC = () => {
       {/* Creator Tools */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-primary serif mb-4">Creator Tools</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
@@ -169,6 +169,21 @@ const AuthorDashboard: React.FC = () => {
                 <p className="text-neutral-600 text-sm mb-4">Get inspired with AI-generated themes, prompts, and visuals</p>
                 <Link href="/dashboard/mood-board">
                   <Button className="w-full">Generate Mood Board</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="h-12 w-12 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center mb-4">
+                  <i className="fas fa-lightbulb text-xl"></i>
+                </div>
+                <h3 className="text-lg font-medium mb-2">Writing Prompts</h3>
+                <p className="text-neutral-600 text-sm mb-4">Overcome writer's block with AI-generated creative prompts</p>
+                <Link href="/dashboard/writing-prompts">
+                  <Button className="w-full">Generate Prompts</Button>
                 </Link>
               </div>
             </CardContent>

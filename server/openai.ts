@@ -19,6 +19,91 @@ const MODEL = "gpt-4o";
 const IMAGE_MODEL = "dall-e-3";
 
 /**
+ * Interface for writing prompt generator parameters
+ */
+export interface WritingPromptParams {
+  genre?: string;
+  toneOrMood?: string;
+  type?: 'scene' | 'character' | 'plot' | 'setting' | 'dialogue' | 'conflict' | 'random';
+  targetAudience?: string;
+  additionalContext?: string;
+  includeExamples?: boolean;
+  count?: number;
+}
+
+/**
+ * Interface for a single writing prompt
+ */
+export interface WritingPrompt {
+  title: string;
+  prompt: string;
+  context?: string;
+  examples?: string[];
+  tips?: string[];
+}
+
+/**
+ * Interface for writing prompt response
+ */
+export interface WritingPromptResponse {
+  prompts: WritingPrompt[];
+  relatedIdeas: string[];
+}
+
+/**
+ * Generate a fallback writing prompt response for demonstration purposes when API calls fail
+ */
+function generateFallbackWritingPrompts(params: WritingPromptParams): WritingPromptResponse {
+  const { 
+    genre = "Fantasy", 
+    toneOrMood = "Mysterious", 
+    type = "random",
+    count = 3
+  } = params;
+  
+  const genericPrompts: WritingPrompt[] = [
+    {
+      title: "The Unexpected Visitor",
+      prompt: "Your protagonist receives a visitor they never expected to see again. How do they react, and what news does this visitor bring?",
+      tips: ["Focus on the emotional impact", "Consider their shared history", "Think about how this changes your protagonist's plans"]
+    },
+    {
+      title: "Lost in the Unknown",
+      prompt: "Your character finds themselves in an unfamiliar place with no memory of how they got there. What do they discover about this place, and how do they attempt to find their way home?",
+      tips: ["Use sensory details to describe the new environment", "Create a compelling reason for why they must return"]
+    },
+    {
+      title: "The Object of Power",
+      prompt: "An ordinary object in your character's possession turns out to have extraordinary properties. What is it, what can it do, and how does it change their life?",
+      tips: ["Consider the limitations of the power", "Think about who else might want this object"]
+    },
+    {
+      title: "Confronting the Truth",
+      prompt: "Your character discovers something they've believed their entire life is a lie. How do they uncover this truth, and how do they come to terms with it?",
+      examples: ["A family secret is revealed", "A historical event was misrepresented", "A trusted mentor has been manipulating them"]
+    },
+    {
+      title: "The Ethical Dilemma",
+      prompt: "Your protagonist faces an impossible choice where both options have serious consequences. What decision do they make, and how do they live with the results?",
+      tips: ["Make both choices equally difficult", "Consider the ripple effects of their decision"]
+    }
+  ];
+  
+  // Select a subset of prompts based on count
+  const selectedPrompts = genericPrompts.slice(0, Math.min(count, genericPrompts.length));
+  
+  return {
+    prompts: selectedPrompts,
+    relatedIdeas: [
+      `A ${toneOrMood} tale set in a ${genre} world`,
+      `A character facing their greatest fear in a ${genre} setting`,
+      `A plot twist that changes everything the reader thought they knew`,
+      `A dialogue-heavy scene that reveals character motivations`
+    ]
+  };
+}
+
+/**
  * Generate a fallback mood board for demonstration purposes when API calls fail
  * This is only used in non-production environments
  */
@@ -212,6 +297,80 @@ export async function refineImagePrompt(basePrompt: string): Promise<string> {
   } catch (error) {
     console.error("Error refining image prompt:", error);
     return basePrompt; // Return original prompt if refinement fails
+  }
+}
+
+/**
+ * Generate writing prompts based on provided parameters
+ */
+export async function generateWritingPrompts(params: WritingPromptParams): Promise<WritingPromptResponse> {
+  const { 
+    genre = "", 
+    toneOrMood = "", 
+    type = "random", 
+    targetAudience = "",
+    additionalContext = "",
+    includeExamples = true,
+    count = 3
+  } = params;
+  
+  // Create a prompt for generating writing prompts
+  const promptText = `Generate ${count} creative writing prompts${genre ? ` for the ${genre} genre` : ""}${toneOrMood ? ` with a ${toneOrMood} tone/mood` : ""}${targetAudience ? ` targeted at ${targetAudience}` : ""}.
+  
+  ${type !== "random" ? `Focus on ${type}-focused prompts.` : "Provide a mix of different types of prompts (character, plot, setting, etc.)."}
+  ${additionalContext ? `Additional context or requirements: ${additionalContext}` : ""}
+  
+  For each prompt, include:
+  1. A catchy title for the prompt
+  2. The actual writing prompt (1-2 paragraphs)
+  3. Optional context that might help the writer
+  4. ${includeExamples ? "2-3 brief examples or variations of the prompt" : ""}
+  5. 2-3 writing tips related to the prompt
+  
+  Also include a list of 4-5 related writing ideas that could inspire the author further.
+  
+  Format the response as a JSON object with the following structure:
+  {
+    "prompts": [
+      {
+        "title": "Prompt Title",
+        "prompt": "The actual writing prompt...",
+        "context": "Optional context for the writer",
+        "examples": ["Example 1", "Example 2", ...],
+        "tips": ["Tip 1", "Tip 2", ...]
+      },
+      // Additional prompts...
+    ],
+    "relatedIdeas": ["Related idea 1", "Related idea 2", ...]
+  }
+  
+  Make the prompts specific, thought-provoking, and rich with creative potential.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { 
+          role: "system", 
+          content: "You are a creative writing coach who specializes in generating inspiring writing prompts tailored to writers' specific needs and preferences."
+        },
+        { role: "user", content: promptText }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}") as WritingPromptResponse;
+    return result;
+  } catch (error) {
+    console.error("Error generating writing prompts:", error);
+    
+    // Return fallback prompts for demo purposes in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      console.log("Using fallback writing prompts for demonstration purposes");
+      return generateFallbackWritingPrompts(params);
+    }
+    
+    throw new Error("Failed to generate writing prompts. Please try again later.");
   }
 }
 

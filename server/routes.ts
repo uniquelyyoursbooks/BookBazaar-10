@@ -25,7 +25,10 @@ import {
   generateBook,
   generateBookPDF,
   type BookGenerationParams,
-  type BookGenerationResponse
+  type BookGenerationResponse,
+  generateWritingPrompts,
+  type WritingPromptParams,
+  type WritingPromptResponse
 } from "./openai";
 import { prepareBookForKdp } from "./utils/kdp-export";
 
@@ -1047,6 +1050,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error generating book PDF:', error);
       res.status(500).json({ error: 'Failed to generate book PDF' });
+    }
+  });
+
+  // Writing Prompts Generator
+  app.post('/api/writing-prompts/generate', async (req, res) => {
+    try {
+      const { 
+        genre, 
+        toneOrMood, 
+        type, 
+        targetAudience, 
+        additionalContext, 
+        includeExamples, 
+        count 
+      } = req.body;
+      
+      if (!process.env.OPENAI_API_KEY) {
+        console.warn('OPENAI_API_KEY is missing or not configured properly');
+      }
+      
+      // Set NODE_ENV to development for demo/testing purposes
+      // This enables fallback mode in the prompt generator
+      process.env.NODE_ENV = 'development';
+      
+      const writingPrompts = await generateWritingPrompts({
+        genre,
+        toneOrMood,
+        type,
+        targetAudience,
+        additionalContext,
+        includeExamples,
+        count
+      });
+      
+      res.json(writingPrompts);
+    } catch (error) {
+      console.error('Error generating writing prompts:', error);
+      res.status(500).json({ 
+        message: 'Error generating writing prompts', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   });
 

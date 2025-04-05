@@ -15,6 +15,7 @@ import Analytics from "@/pages/dashboard/analytics";
 import MoodBoard from "@/pages/dashboard/mood-board";
 import CoverDesigner from "@/pages/dashboard/cover-designer";
 import KdpExport from "@/pages/dashboard/kdp-export";
+import WritingPrompts from "@/pages/dashboard/writing-prompts";
 import Discover from "@/pages/discover";
 import Recommendations from "@/pages/recommendations";
 import { OnboardingProvider, OnboardingTour, WelcomeDialog } from "@/components/onboarding";
@@ -56,6 +57,7 @@ function App() {
             <Route path="/dashboard/mood-board" component={MoodBoard} />
             <Route path="/dashboard/cover-designer" component={CoverDesigner} />
             <Route path="/dashboard/kdp-export" component={KdpExport} />
+            <Route path="/dashboard/writing-prompts" component={WritingPrompts} />
             <Route path="/discover" component={Discover} />
             <Route path="/recommendations" component={Recommendations} />
             <Route component={NotFound} />
