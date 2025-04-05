@@ -51,6 +51,9 @@ export const books = pgTable("books", {
   price: text("price").default("0.00").notNull(),
   category: bookCategoryEnum("category").default("other").notNull(),
   published: boolean("published").default(true).notNull(),
+  isAiGenerated: boolean("is_ai_generated").default(false),
+  aiGenerationPrompt: text("ai_generation_prompt"),
+  outline: json("outline").$type<{chapters: {title: string, content: string}[]}>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -63,7 +66,10 @@ export const insertBookSchema = createInsertSchema(books).pick({
   filePath: true,
   price: true,
   category: true,
-  published: true
+  published: true,
+  isAiGenerated: true,
+  aiGenerationPrompt: true,
+  outline: true
 });
 
 // Review schema

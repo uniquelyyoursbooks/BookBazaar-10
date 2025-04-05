@@ -20,7 +20,12 @@ import {
   generateBookCover,
   generateBookCoverVariation,
   type BookCoverParams,
-  type BookCoverResponse
+  type BookCoverResponse,
+  generateBookOutline,
+  generateBook,
+  generateBookPDF,
+  type BookGenerationParams,
+  type BookGenerationResponse
 } from "./openai";
 import { prepareBookForKdp } from "./utils/kdp-export";
 

@@ -20,7 +20,9 @@ export interface IStorage {
   getBooksByAuthor(authorId: number): Promise<Book[]>;
   getBooksByCategory(category: string): Promise<Book[]>;
   searchBooks(query: string): Promise<Book[]>;
+  getAIGeneratedBooks(authorId: number): Promise<Book[]>;
   createBook(book: InsertBook): Promise<Book>;
+  createAIGeneratedBook(book: InsertBook): Promise<Book>;
   updateBook(id: number, book: Partial<InsertBook>): Promise<Book | undefined>;
   deleteBook(id: number): Promise<boolean>;
   
@@ -169,7 +171,10 @@ export class MemStorage implements IStorage {
       coverImage: insertBook.coverImage ?? null,
       price: insertBook.price ?? "",
       category: insertBook.category ?? "other",
-      published: insertBook.published ?? false
+      published: insertBook.published ?? false,
+      isAiGenerated: insertBook.isAiGenerated ?? false,
+      aiGenerationPrompt: insertBook.aiGenerationPrompt ?? null,
+      outline: insertBook.outline ?? null
     };
     this.books.set(id, book);
     return book;
@@ -191,6 +196,18 @@ export class MemStorage implements IStorage {
   
   async deleteBook(id: number): Promise<boolean> {
     return this.books.delete(id);
+  }
+  
+  async getAIGeneratedBooks(authorId: number): Promise<Book[]> {
+    return Array.from(this.books.values())
+      .filter(book => book.authorId === authorId && book.isAiGenerated === true)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+  
+  async createAIGeneratedBook(insertBook: InsertBook): Promise<Book> {
+    // Mark the book as AI-generated
+    insertBook.isAiGenerated = true;
+    return this.createBook(insertBook);
   }
   
   // Review methods

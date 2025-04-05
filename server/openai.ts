@@ -1,9 +1,16 @@
 import OpenAI from "openai";
+import fs from "fs";
+import path from "path";
+import { createWriteStream } from "fs";
+import { promisify } from "util";
+import { pipeline } from "stream";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+const streamPipeline = promisify(pipeline);
 
 // The newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const MODEL = "gpt-4o";
@@ -523,4 +530,265 @@ function generateFallbackRecommendations(params: BookRecommendationParams): Book
   
   // Return a mix of genre-specific and generic recommendations
   return [...result, ...genericRecs].slice(0, params.limit || 5);
+}
+
+/**
+ * Interface for book generation parameters
+ */
+export interface BookGenerationParams {
+  title?: string;
+  genre?: string;
+  description?: string;
+  outline?: string;
+  characterDescriptions?: string;
+  targetAudience?: string;
+  tone?: string;
+  length?: 'short' | 'medium' | 'long';
+  additionalInstructions?: string;
+}
+
+/**
+ * Interface for chapter generation parameters
+ */
+interface ChapterGenerationParams {
+  bookTitle: string;
+  chapterTitle: string;
+  chapterNumber: number;
+  totalChapters: number;
+  previousChapterSummary?: string;
+  outline: string;
+  genre: string;
+  tone: string;
+  targetAudience: string;
+}
+
+/**
+ * Interface for the book generation response
+ */
+export interface BookGenerationResponse {
+  title: string;
+  outline: {
+    chapters: {
+      title: string;
+      content: string;
+    }[];
+  };
+  coverPrompt: string;
+}
+
+/**
+ * Generate an outline for a book based on provided parameters
+ */
+export async function generateBookOutline(params: BookGenerationParams): Promise<{title: string, chapters: {title: string, summary: string}[]}> {
+  const { 
+    title = "", 
+    genre = "fiction", 
+    description = "", 
+    outline = "",
+    characterDescriptions = "",
+    targetAudience = "general",
+    tone = "balanced",
+    length = "medium",
+    additionalInstructions = ""
+  } = params;
+  
+  // Define chapter count based on length
+  const chapterCounts = {
+    short: "5-7",
+    medium: "10-12",
+    long: "15-20"
+  };
+  
+  // Create a prompt for the outline generation
+  const promptText = `
+  Generate a detailed chapter-by-chapter outline for a ${genre} book ${title ? `titled "${title}"` : ""}.
+  ${description ? `The book is about: ${description}` : ""}
+  ${outline ? `The author has provided the following outline ideas: ${outline}` : ""}
+  ${characterDescriptions ? `Character descriptions: ${characterDescriptions}` : ""}
+  
+  The book should be appropriate for a ${targetAudience} audience with a ${tone} tone.
+  Create ${chapterCounts[length]} chapters.
+  ${additionalInstructions ? `Additional instructions: ${additionalInstructions}` : ""}
+  
+  Provide the outline as a JSON object with the following structure:
+  {
+    "title": "Final book title",
+    "chapters": [
+      {
+        "title": "Chapter 1 title",
+        "summary": "Detailed summary of the chapter (100-200 words)"
+      },
+      ...
+    ]
+  }
+  
+  Make sure the chapters flow logically and create a cohesive narrative with proper story structure, including setup, rising action, climax, and resolution.
+  `;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: "system", content: "You are a professional book editor and author who helps create compelling book outlines." },
+        { role: "user", content: promptText }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0].message.content || "{}";
+    return JSON.parse(content);
+  } catch (error) {
+    console.error("Error generating book outline:", error);
+    throw new Error("Failed to generate book outline. Please try again later.");
+  }
+}
+
+/**
+ * Generate a single chapter based on provided parameters
+ */
+async function generateChapter(params: ChapterGenerationParams): Promise<string> {
+  const { 
+    bookTitle,
+    chapterTitle, 
+    chapterNumber, 
+    totalChapters,
+    previousChapterSummary = "",
+    outline,
+    genre,
+    tone,
+    targetAudience
+  } = params;
+  
+  // Create a prompt for the chapter generation
+  const promptText = `
+  Write chapter ${chapterNumber} of ${totalChapters} titled "${chapterTitle}" for the ${genre} book "${bookTitle}".
+  
+  ${previousChapterSummary ? `The previous chapter ended with: ${previousChapterSummary}` : ""}
+  
+  Overall book outline: ${outline}
+  
+  The book has a ${tone} tone and is written for a ${targetAudience} audience.
+  
+  Write a complete, polished chapter that moves the story forward according to the outline.
+  The chapter should be engaging, well-structured, and maintain consistent characterization.
+  
+  If this is the first chapter, establish the setting, introduce key characters, and hook the reader.
+  If this is the final chapter, provide a satisfying conclusion to the story's main conflicts.
+  
+  Write approximately 2000-3000 words for this chapter.
+  `;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: "system", content: "You are a professional author who writes engaging, well-structured chapters." },
+        { role: "user", content: promptText }
+      ],
+      max_tokens: 4000
+    });
+
+    return response.choices[0].message.content || "";
+  } catch (error) {
+    console.error(`Error generating chapter ${chapterNumber}:`, error);
+    throw new Error(`Failed to generate chapter ${chapterNumber}. Please try again later.`);
+  }
+}
+
+/**
+ * Generate the complete book based on outline and parameters
+ */
+export async function generateBook(params: BookGenerationParams): Promise<BookGenerationResponse> {
+  try {
+    // First, generate or use provided outline
+    const outlineData = await generateBookOutline(params);
+    
+    // Generate a cover prompt based on the book details
+    const coverPromptResponse = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { 
+          role: "system", 
+          content: "You create concise, detailed prompts for AI image generators to create stunning book covers." 
+        },
+        { 
+          role: "user", 
+          content: `
+          Create a prompt for a book cover design for the ${params.genre || ""} book "${outlineData.title}".
+          The book is about: ${params.description || ""}
+          The book should appeal to a ${params.targetAudience || "general"} audience.
+          The prompt should be detailed but concise, including visual elements, style, and mood.
+          The cover should look professional and commercially viable.
+          Don't include text in the image itself.
+          `
+        }
+      ]
+    });
+    
+    const coverPrompt = coverPromptResponse.choices[0].message.content || "";
+    
+    // Generate each chapter in sequence
+    const chapters = [];
+    let previousChapterSummary = "";
+    
+    for (let i = 0; i < outlineData.chapters.length; i++) {
+      const chapter = outlineData.chapters[i];
+      const chapterContent = await generateChapter({
+        bookTitle: outlineData.title,
+        chapterTitle: chapter.title,
+        chapterNumber: i + 1,
+        totalChapters: outlineData.chapters.length,
+        previousChapterSummary: previousChapterSummary,
+        outline: JSON.stringify(outlineData),
+        genre: params.genre || "fiction",
+        tone: params.tone || "balanced",
+        targetAudience: params.targetAudience || "general"
+      });
+      
+      chapters.push({
+        title: chapter.title,
+        content: chapterContent
+      });
+      
+      // Update the previous chapter summary for context in the next chapter
+      previousChapterSummary = chapter.summary;
+    }
+    
+    return {
+      title: outlineData.title,
+      outline: {
+        chapters: chapters
+      },
+      coverPrompt
+    };
+  } catch (error) {
+    console.error("Error generating book:", error);
+    throw new Error("Failed to generate book. Please try again later.");
+  }
+}
+
+/**
+ * Convert the generated book to a PDF file
+ */
+export async function generateBookPDF(book: BookGenerationResponse, outputPath: string): Promise<string> {
+  try {
+    // Create a text version of the book that can be converted to PDF
+    let bookText = `# ${book.title}\n\n`;
+    
+    // Add each chapter
+    for (const chapter of book.outline.chapters) {
+      bookText += `## ${chapter.title}\n\n${chapter.content}\n\n`;
+    }
+    
+    // Write the text file
+    const textFilePath = outputPath.replace('.pdf', '.txt');
+    fs.writeFileSync(textFilePath, bookText);
+    
+    // In a real implementation, you'd use a library like pdfkit to convert to PDF
+    // For now, we'll just use the text file
+    return textFilePath;
+  } catch (error) {
+    console.error("Error generating book PDF:", error);
+    throw new Error("Failed to generate book PDF. Please try again later.");
+  }
 }
