@@ -22,6 +22,7 @@ import {
   type BookCoverParams,
   type BookCoverResponse
 } from "./openai";
+import { prepareBookForKdp } from "./utils/kdp-export";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -622,6 +623,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         message: 'Error generating book cover variation', 
         error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  // KDP Export Functionality
+  app.post('/api/books/:id/kdp-export', async (req, res) => {
+    try {
+      const bookId = parseInt(req.params.id);
+      const book = await storage.getBook(bookId);
+      
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      // Extract export options from request
+      const { exportType = 'ebook' } = req.body;
+      
+      if (!['ebook', 'print'].includes(exportType)) {
+        return res.status(400).json({ message: 'Invalid export type. Must be either "ebook" or "print"' });
+      }
+      
+      // Check if files exist
+      if (!book.filePath || !fs.existsSync(book.filePath)) {
+        return res.status(400).json({ message: 'Book file not found' });
+      }
+      
+      if (!book.coverImage || !fs.existsSync(book.coverImage)) {
+        return res.status(400).json({ message: 'Cover image not found' });
+      }
+      
+      // Prepare book for KDP export
+      const result = await prepareBookForKdp({
+        bookId,
+        title: book.title,
+        coverPath: book.coverImage,
+        manuscriptPath: book.filePath,
+        exportType
+      });
+      
+      res.json({
+        message: 'Book prepared for KDP export successfully',
+        exportUrl: `/uploads/${result.zipPath.split('/exports/')[1]}`,
+        fileName: path.basename(result.zipPath)
+      });
+    } catch (error) {
+      console.error('Error during KDP export:', error);
+      res.status(500).json({ 
+        message: 'Error preparing book for KDP export', 
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
