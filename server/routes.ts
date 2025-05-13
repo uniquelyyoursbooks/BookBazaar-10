@@ -1031,6 +1031,287 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================
+  // Collaboration API Routes
+  // ========================
+
+  // Get all collaborators for a book
+  app.get('/api/books/:bookId/collaborators', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { bookId } = req.params;
+      const bookIdNum = parseInt(bookId);
+      
+      // Check if the user is the author or a collaborator
+      const book = await storage.getBook(bookIdNum);
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      // Only allow authors and collaborators to view the list
+      if (book.authorId !== userId) {
+        const permission = await storage.checkCollaborationPermission(userId, bookIdNum);
+        if (!permission) {
+          return res.status(403).json({ message: 'Unauthorized access to collaboration data' });
+        }
+      }
+      
+      const collaborators = await storage.getCollaboratorsByBook(bookIdNum);
+      
+      // Fetch user details for each collaborator
+      const collaboratorDetails = await Promise.all(
+        collaborators.map(async (collaborator) => {
+          const user = await storage.getUser(collaborator.userId);
+          return {
+            id: collaborator.id,
+            userId: collaborator.userId,
+            username: user?.username,
+            fullName: user?.fullName,
+            role: collaborator.role,
+            inviteStatus: collaborator.inviteStatus,
+            invitedAt: collaborator.invitedAt,
+            lastActive: collaborator.lastActive
+          };
+        })
+      );
+      
+      res.json(collaboratorDetails);
+    } catch (error) {
+      console.error('Error fetching collaborators:', error);
+      res.status(500).json({ message: 'Server error while fetching collaborators' });
+    }
+  });
+
+  // Get pending collaboration invites for the current user
+  app.get('/api/collaborations/pending', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      
+      const pendingInvites = await storage.getCollaborationsByUserAndStatus(userId, 'pending');
+      
+      // Fetch book and inviter details for context
+      const inviteDetails = await Promise.all(
+        pendingInvites.map(async (invite) => {
+          const book = await storage.getBook(invite.bookId);
+          const inviter = await storage.getUser(invite.invitedBy);
+          return {
+            id: invite.id,
+            bookId: invite.bookId,
+            bookTitle: book?.title,
+            inviterName: inviter?.fullName,
+            role: invite.role,
+            invitedAt: invite.invitedAt
+          };
+        })
+      );
+      
+      res.json(inviteDetails);
+    } catch (error) {
+      console.error('Error fetching pending invites:', error);
+      res.status(500).json({ message: 'Server error while fetching pending invites' });
+    }
+  });
+
+  // Invite a collaborator to a book
+  app.post('/api/books/:bookId/collaborators', validateAuth, async (req, res) => {
+    try {
+      const authorId = (req as any).user.id;
+      const { bookId } = req.params;
+      const bookIdNum = parseInt(bookId);
+      const { email, username, role } = req.body;
+      
+      if (!email && !username) {
+        return res.status(400).json({ message: 'Either email or username is required' });
+      }
+      
+      if (!role || !['co-author', 'editor', 'viewer'].includes(role)) {
+        return res.status(400).json({ message: 'Valid role is required' });
+      }
+      
+      // Check if the user is the author
+      const book = await storage.getBook(bookIdNum);
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      if (book.authorId !== authorId) {
+        return res.status(403).json({ message: 'Only the book author can invite collaborators' });
+      }
+      
+      // Check if the user being invited exists
+      const userToInvite = email 
+        ? await storage.getUserByEmail(email) 
+        : await storage.getUserByUsername(username);
+        
+      if (!userToInvite) {
+        return res.status(404).json({ message: 'User not found. Please check the email or username.' });
+      }
+      
+      // Prevent self-invitation
+      if (userToInvite.id === authorId) {
+        return res.status(400).json({ message: 'You cannot invite yourself as a collaborator.' });
+      }
+      
+      // Check if the collaboration already exists
+      const existingCollabs = await storage.getCollaboratorsByBook(bookIdNum);
+      const existingCollab = existingCollabs.find(c => c.userId === userToInvite.id);
+      if (existingCollab) {
+        return res.status(400).json({ message: 'This user is already a collaborator or has a pending invitation.' });
+      }
+      
+      // Create the collaboration
+      const newCollaborator = await storage.inviteCollaborator({
+        bookId: bookIdNum,
+        userId: userToInvite.id,
+        role: role as any,
+        inviteStatus: 'pending',
+        invitedBy: authorId
+      });
+      
+      res.status(201).json({
+        id: newCollaborator.id,
+        userId: userToInvite.id,
+        username: userToInvite.username,
+        fullName: userToInvite.fullName,
+        role: newCollaborator.role,
+        inviteStatus: newCollaborator.inviteStatus
+      });
+    } catch (error) {
+      console.error('Error inviting collaborator:', error);
+      res.status(500).json({ message: 'Server error while inviting collaborator' });
+    }
+  });
+
+  // Respond to a collaboration invitation (accept/reject)
+  app.patch('/api/collaborations/:id/status', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!['accepted', 'rejected'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status. Must be "accepted" or "rejected".' });
+      }
+      
+      // Get the collaboration
+      const collaboration = await storage.getCollaborator(parseInt(id));
+      if (!collaboration) {
+        return res.status(404).json({ message: 'Collaboration invitation not found' });
+      }
+      
+      // Verify the user is the invitee
+      if (collaboration.userId !== userId) {
+        return res.status(403).json({ message: 'You can only respond to your own invitations' });
+      }
+      
+      // Update the status
+      const updatedCollab = await storage.updateCollaboratorStatus(
+        parseInt(id), 
+        status, 
+        status === 'accepted' ? new Date() : undefined
+      );
+      
+      res.json(updatedCollab);
+    } catch (error) {
+      console.error('Error responding to collaboration invitation:', error);
+      res.status(500).json({ message: 'Server error while updating invitation status' });
+    }
+  });
+
+  // Update a collaborator's role (only by the book author)
+  app.patch('/api/collaborations/:id/role', validateAuth, async (req, res) => {
+    try {
+      const authorId = (req as any).user.id;
+      const { id } = req.params;
+      const { role } = req.body;
+      
+      if (!['co-author', 'editor', 'viewer'].includes(role)) {
+        return res.status(400).json({ message: 'Invalid role' });
+      }
+      
+      // Get the collaboration
+      const collaboration = await storage.getCollaborator(parseInt(id));
+      if (!collaboration) {
+        return res.status(404).json({ message: 'Collaboration not found' });
+      }
+      
+      // Get the book to verify the requester is the author
+      const book = await storage.getBook(collaboration.bookId);
+      if (!book || book.authorId !== authorId) {
+        return res.status(403).json({ message: 'Only the book author can change collaboration roles' });
+      }
+      
+      // Update the role
+      const updatedCollab = await storage.updateCollaboratorRole(parseInt(id), role);
+      res.json(updatedCollab);
+    } catch (error) {
+      console.error('Error updating collaborator role:', error);
+      res.status(500).json({ message: 'Server error while updating collaborator role' });
+    }
+  });
+
+  // Remove a collaborator
+  app.delete('/api/collaborations/:id', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { id } = req.params;
+      
+      // Get the collaboration
+      const collaboration = await storage.getCollaborator(parseInt(id));
+      if (!collaboration) {
+        return res.status(404).json({ message: 'Collaboration not found' });
+      }
+      
+      // Get the book
+      const book = await storage.getBook(collaboration.bookId);
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      // Allow removal if the requester is the book author or the collaborator themselves
+      if (book.authorId !== userId && collaboration.userId !== userId) {
+        return res.status(403).json({ message: 'Unauthorized to remove this collaboration' });
+      }
+      
+      // Remove the collaboration
+      await storage.removeCollaborator(parseInt(id));
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error removing collaborator:', error);
+      res.status(500).json({ message: 'Server error while removing collaborator' });
+    }
+  });
+  
+  // Get real-time document changes for collaborative editing
+  app.get('/api/books/:bookId/changes', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { bookId } = req.params;
+      const bookIdNum = parseInt(bookId);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      
+      // Check if user has access to this book
+      const book = await storage.getBook(bookIdNum);
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      if (book.authorId !== userId) {
+        const permission = await storage.checkCollaborationPermission(userId, bookIdNum);
+        if (!permission) {
+          return res.status(403).json({ message: 'Unauthorized access to document changes' });
+        }
+      }
+      
+      const changes = await storage.getDocumentChanges(bookIdNum, limit, offset);
+      res.json(changes);
+    } catch (error) {
+      console.error('Error fetching document changes:', error);
+      res.status(500).json({ message: 'Server error while fetching document changes' });
+    }
+  });
+
   // Book Generation API - Generate a new book outline
   app.post('/api/generate-book/outline', validateAuth, async (req, res) => {
     try {
