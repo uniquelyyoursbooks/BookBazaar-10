@@ -5,10 +5,20 @@ import { createWriteStream } from "fs";
 import { promisify } from "util";
 import { pipeline } from "stream";
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Initialize OpenAI client if API key is available
+let openai: OpenAI | null = null;
+try {
+  if (process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+    console.log("OpenAI client initialized successfully");
+  } else {
+    console.warn("OPENAI_API_KEY not found in environment variables. Using fallback functions for development.");
+  }
+} catch (error) {
+  console.error("Error initializing OpenAI client:", error);
+}
 
 const streamPipeline = promisify(pipeline);
 
