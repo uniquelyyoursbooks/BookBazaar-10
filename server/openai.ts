@@ -5,7 +5,7 @@ import { createWriteStream } from "fs";
 import { promisify } from "util";
 import { pipeline } from "stream";
 // Import functions from Gemini implementation
-import * as geminiAPI from "./gemini";
+import * as geminiAPI from "./gemini-basic";
 
 // Initialize OpenAI client if API key is available
 let openai: OpenAI | null = null;
@@ -316,6 +316,12 @@ export async function refineImagePrompt(basePrompt: string): Promise<string> {
  * Generate writing prompts based on provided parameters
  */
 export async function generateWritingPrompts(params: WritingPromptParams): Promise<WritingPromptResponse> {
+  // If OpenAI client isn't available, use the Gemini implementation instead
+  if (!openai && process.env.GEMINI_API_KEY) {
+    console.log("Using Gemini API for generating writing prompts");
+    return geminiAPI.generateWritingPrompts(params);
+  }
+  
   const { 
     genre = "", 
     toneOrMood = "", 
@@ -359,6 +365,10 @@ export async function generateWritingPrompts(params: WritingPromptParams): Promi
   Make the prompts specific, thought-provoking, and rich with creative potential.`;
 
   try {
+    if (!openai) {
+      throw new Error("OpenAI client not initialized");
+    }
+    
     const response = await openai.chat.completions.create({
       model: MODEL,
       messages: [
@@ -374,15 +384,17 @@ export async function generateWritingPrompts(params: WritingPromptParams): Promi
     const result = JSON.parse(response.choices[0].message.content || "{}") as WritingPromptResponse;
     return result;
   } catch (error) {
-    console.error("Error generating writing prompts:", error);
+    console.error("Error generating writing prompts with OpenAI:", error);
     
-    // Return fallback prompts for demo purposes in non-production
-    if (process.env.NODE_ENV !== 'production') {
-      console.log("Using fallback writing prompts for demonstration purposes");
-      return generateFallbackWritingPrompts(params);
+    // Try with Gemini if available
+    if (process.env.GEMINI_API_KEY) {
+      console.log("Falling back to Gemini API for writing prompts");
+      return geminiAPI.generateWritingPrompts(params);
     }
     
-    throw new Error("Failed to generate writing prompts. Please try again later.");
+    // Return fallback prompts as a last resort
+    console.log("Using fallback writing prompts for demonstration purposes");
+    return generateFallbackWritingPrompts(params);
   }
 }
 
