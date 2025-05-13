@@ -1,10 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from 'ws';
 import { storage } from "./storage";
 import { 
   insertUserSchema, insertBookSchema, insertReviewSchema, insertReadingProgressSchema, 
-  insertBookmarkSchema, insertAnnotationSchema,
-  ReadingProgress 
+  insertBookmarkSchema, insertAnnotationSchema, insertCollaboratorSchema, insertDocumentChangeSchema,
+  ReadingProgress, DocumentChange, Collaborator
 } from "@shared/schema";
 import multer from "multer";
 import path from "path";

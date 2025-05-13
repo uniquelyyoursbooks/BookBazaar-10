@@ -4,7 +4,9 @@ import {
   reviews, type Review, type InsertReview,
   readingProgresses, type ReadingProgress, type InsertReadingProgress,
   bookmarks, type Bookmark, type InsertBookmark,
-  annotations, type Annotation, type InsertAnnotation
+  annotations, type Annotation, type InsertAnnotation,
+  collaborators, type Collaborator, type InsertCollaborator,
+  documentChanges, type DocumentChange, type InsertDocumentChange
 } from "@shared/schema";
 
 export interface IStorage {
@@ -57,6 +59,23 @@ export interface IStorage {
   createAnnotation(annotation: InsertAnnotation): Promise<Annotation>;
   updateAnnotation(id: number, annotation: Partial<InsertAnnotation>): Promise<Annotation | undefined>;
   deleteAnnotation(id: number): Promise<boolean>;
+  
+  // Collaborator methods
+  getCollaborator(id: number): Promise<Collaborator | undefined>;
+  getCollaboratorsByBook(bookId: number): Promise<Collaborator[]>;
+  getCollaboratorsByUser(userId: number): Promise<Collaborator[]>;
+  getCollaborationsByUserAndStatus(userId: number, status: string): Promise<Collaborator[]>;
+  checkCollaborationPermission(userId: number, bookId: number): Promise<Collaborator | undefined>;
+  inviteCollaborator(collaborator: InsertCollaborator): Promise<Collaborator>;
+  updateCollaboratorStatus(id: number, status: string, acceptedAt?: Date): Promise<Collaborator | undefined>;
+  updateCollaboratorRole(id: number, role: string): Promise<Collaborator | undefined>;
+  removeCollaborator(id: number): Promise<boolean>;
+  
+  // Document change methods
+  getDocumentChanges(bookId: number, limit?: number, offset?: number): Promise<DocumentChange[]>;
+  getDocumentChangesByChapter(bookId: number, chapterId: number): Promise<DocumentChange[]>;
+  createDocumentChange(change: InsertDocumentChange): Promise<DocumentChange>;
+  getLatestDocumentChanges(bookId: number, userId?: number): Promise<DocumentChange[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -66,6 +85,8 @@ export class MemStorage implements IStorage {
   private readingProgresses: Map<string, ReadingProgress>;
   private bookmarks: Map<number, Bookmark>;
   private annotations: Map<number, Annotation>;
+  private collaborators: Map<number, Collaborator>;
+  private documentChanges: Map<number, DocumentChange>;
   
   private userIdCounter: number;
   private bookIdCounter: number;
@@ -73,6 +94,8 @@ export class MemStorage implements IStorage {
   private readingProgressIdCounter: number;
   private bookmarkIdCounter: number;
   private annotationIdCounter: number;
+  private collaboratorIdCounter: number;
+  private documentChangeIdCounter: number;
   
   constructor() {
     this.users = new Map();
@@ -81,6 +104,8 @@ export class MemStorage implements IStorage {
     this.readingProgresses = new Map();
     this.bookmarks = new Map();
     this.annotations = new Map();
+    this.collaborators = new Map();
+    this.documentChanges = new Map();
     
     this.userIdCounter = 1;
     this.bookIdCounter = 1;
@@ -88,6 +113,8 @@ export class MemStorage implements IStorage {
     this.readingProgressIdCounter = 1;
     this.bookmarkIdCounter = 1;
     this.annotationIdCounter = 1;
+    this.collaboratorIdCounter = 1;
+    this.documentChangeIdCounter = 1;
     
     // Create a default admin user
     this.createUser({
@@ -538,6 +565,131 @@ export class MemStorage implements IStorage {
   
   async deleteAnnotation(id: number): Promise<boolean> {
     return this.annotations.delete(id);
+  }
+  
+  // Collaborator methods
+  async getCollaborator(id: number): Promise<Collaborator | undefined> {
+    return this.collaborators.get(id);
+  }
+  
+  async getCollaboratorsByBook(bookId: number): Promise<Collaborator[]> {
+    return Array.from(this.collaborators.values())
+      .filter(collab => collab.bookId === bookId)
+      .sort((a, b) => a.id - b.id);
+  }
+  
+  async getCollaboratorsByUser(userId: number): Promise<Collaborator[]> {
+    return Array.from(this.collaborators.values())
+      .filter(collab => collab.userId === userId)
+      .sort((a, b) => new Date(b.invitedAt).getTime() - new Date(a.invitedAt).getTime());
+  }
+  
+  async getCollaborationsByUserAndStatus(userId: number, status: string): Promise<Collaborator[]> {
+    return Array.from(this.collaborators.values())
+      .filter(collab => collab.userId === userId && collab.inviteStatus === status)
+      .sort((a, b) => new Date(b.invitedAt).getTime() - new Date(a.invitedAt).getTime());
+  }
+  
+  async checkCollaborationPermission(userId: number, bookId: number): Promise<Collaborator | undefined> {
+    return Array.from(this.collaborators.values())
+      .find(collab => collab.userId === userId && collab.bookId === bookId && collab.inviteStatus === 'accepted');
+  }
+  
+  async inviteCollaborator(collaborator: InsertCollaborator): Promise<Collaborator> {
+    const id = this.collaboratorIdCounter++;
+    const now = new Date();
+    
+    const newCollaborator: Collaborator = {
+      id,
+      bookId: collaborator.bookId,
+      userId: collaborator.userId,
+      role: collaborator.role ?? 'co-author',
+      inviteStatus: collaborator.inviteStatus ?? 'pending',
+      invitedBy: collaborator.invitedBy,
+      invitedAt: now,
+      acceptedAt: null,
+      lastActive: null
+    };
+    
+    this.collaborators.set(id, newCollaborator);
+    return newCollaborator;
+  }
+  
+  async updateCollaboratorStatus(id: number, status: string, acceptedAt?: Date): Promise<Collaborator | undefined> {
+    const collaborator = this.collaborators.get(id);
+    if (!collaborator) return undefined;
+    
+    const updatedCollaborator: Collaborator = {
+      ...collaborator,
+      inviteStatus: status,
+      acceptedAt: status === 'accepted' ? acceptedAt || new Date() : collaborator.acceptedAt
+    };
+    
+    this.collaborators.set(id, updatedCollaborator);
+    return updatedCollaborator;
+  }
+  
+  async updateCollaboratorRole(id: number, role: string): Promise<Collaborator | undefined> {
+    const collaborator = this.collaborators.get(id);
+    if (!collaborator) return undefined;
+    
+    const updatedCollaborator: Collaborator = {
+      ...collaborator,
+      role: role as any // Cast to handle the enum type
+    };
+    
+    this.collaborators.set(id, updatedCollaborator);
+    return updatedCollaborator;
+  }
+  
+  async removeCollaborator(id: number): Promise<boolean> {
+    return this.collaborators.delete(id);
+  }
+  
+  // Document change methods
+  async getDocumentChanges(bookId: number, limit: number = 50, offset: number = 0): Promise<DocumentChange[]> {
+    return Array.from(this.documentChanges.values())
+      .filter(change => change.bookId === bookId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(offset, offset + limit);
+  }
+  
+  async getDocumentChangesByChapter(bookId: number, chapterId: number): Promise<DocumentChange[]> {
+    return Array.from(this.documentChanges.values())
+      .filter(change => change.bookId === bookId && change.chapterId === chapterId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+  
+  async createDocumentChange(change: InsertDocumentChange): Promise<DocumentChange> {
+    const id = this.documentChangeIdCounter++;
+    const now = new Date();
+    
+    const newChange: DocumentChange = {
+      id,
+      bookId: change.bookId,
+      chapterId: change.chapterId ?? null,
+      userId: change.userId,
+      changeType: change.changeType,
+      position: change.position ?? null,
+      content: change.content ?? null,
+      previousContent: change.previousContent ?? null,
+      timestamp: now
+    };
+    
+    this.documentChanges.set(id, newChange);
+    return newChange;
+  }
+  
+  async getLatestDocumentChanges(bookId: number, userId?: number): Promise<DocumentChange[]> {
+    let changes = Array.from(this.documentChanges.values())
+      .filter(change => change.bookId === bookId);
+    
+    if (userId) {
+      changes = changes.filter(change => change.userId !== userId);
+    }
+    
+    return changes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 20);
   }
 }
 
