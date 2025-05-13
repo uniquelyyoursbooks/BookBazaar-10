@@ -107,7 +107,11 @@ const EditBook: React.FC = () => {
   // Update book mutation
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<Book>) => {
-      return await apiRequest("PUT", `/api/books/${bookId}`, data);
+      return await apiRequest({
+        method: "PUT", 
+        url: `/api/books/${bookId}`, 
+        data
+      });
     },
     onSuccess: () => {
       // Invalidate the book query to refetch
@@ -167,7 +171,10 @@ const EditBook: React.FC = () => {
   // Delete book mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("DELETE", `/api/books/${bookId}`, undefined);
+      return await apiRequest({
+        method: "DELETE", 
+        url: `/api/books/${bookId}`
+      });
     },
     onSuccess: () => {
       // Invalidate the author's books query
@@ -197,7 +204,7 @@ const EditBook: React.FC = () => {
     await updateMutation.mutateAsync({
       title: values.title,
       description: values.description,
-      category: values.category,
+      category: values.category as "fiction" | "non_fiction" | "mystery" | "thriller" | "fantasy" | "science_fiction" | "romance" | "poetry" | "biography" | "historical" | "self_help" | "technical" | "other",
       price: values.price,
       published: values.published,
     });
