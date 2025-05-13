@@ -236,7 +236,7 @@ function generateFallbackMoodBoard(params: MoodBoardGeneratorParams): MoodBoardR
     items: [
       {
         type: "quote",
-        content: "The scariest moment is always just before you start. After that, things can only get better." – Stephen King"
+        content: "The scariest moment is always just before you start. After that, things can only get better. – Stephen King"
       },
       {
         type: "prompt",
@@ -252,7 +252,7 @@ function generateFallbackMoodBoard(params: MoodBoardGeneratorParams): MoodBoardR
       },
       {
         type: "quote",
-        content: "Tell the truth through whichever veil comes to hand — but tell it." – Zadie Smith"
+        content: "Tell the truth through whichever veil comes to hand — but tell it. – Zadie Smith"
       },
       {
         type: "prompt",
@@ -392,13 +392,11 @@ export async function generateWritingPrompts(params: WritingPromptParams): Promi
       "relatedIdeas": ["Related idea 1", "Related idea 2", ...]
     }`;
 
-    const result = await textModel.generateContent({
-      contents: [{ role: "user", text: promptText }],
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        responseMimeType: "application/json",
-      },
+    const result = await textModel.generateContent([
+      { text: promptText }
+    ], {
+      temperature: 0.7,
+      topP: 0.95,
       safetySettings,
     });
 
@@ -468,13 +466,11 @@ export async function generateWritingMoodBoard(params: MoodBoardGeneratorParams)
       }
     }`;
 
-    const result = await textModel.generateContent({
-      contents: [{ role: "user", text: promptText }],
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        responseMimeType: "application/json",
-      },
+    const result = await textModel.generateContent([
+      { text: promptText }
+    ], {
+      temperature: 0.7,
+      topP: 0.95,
       safetySettings,
     });
 
