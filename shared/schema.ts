@@ -179,6 +179,57 @@ export const insertAnnotationSchema = createInsertSchema(annotations).pick({
   color: true
 });
 
+// Co-author relationship schema
+export const collaborationRoleEnum = pgEnum("collaboration_role", [
+  "owner", // Original author
+  "co-author", // Can edit and contribute
+  "editor", // Can suggest edits
+  "viewer" // Can only view
+]);
+
+export const collaborators = pgTable("collaborators", {
+  id: serial("id").primaryKey(),
+  bookId: integer("book_id").notNull(),
+  userId: integer("user_id").notNull(),
+  role: collaborationRoleEnum("role").default("co-author").notNull(),
+  inviteStatus: text("invite_status").default("pending").notNull(), // pending, accepted, rejected
+  invitedBy: integer("invited_by").notNull(),
+  invitedAt: timestamp("invited_at").defaultNow().notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  lastActive: timestamp("last_active"),
+});
+
+export const insertCollaboratorSchema = createInsertSchema(collaborators).pick({
+  bookId: true,
+  userId: true,
+  role: true,
+  inviteStatus: true,
+  invitedBy: true
+});
+
+// Document Change schema for real-time collaboration
+export const documentChanges = pgTable("document_changes", {
+  id: serial("id").primaryKey(),
+  bookId: integer("book_id").notNull(),
+  chapterId: integer("chapter_id"), // Optional, for chapter-specific changes
+  userId: integer("user_id").notNull(),
+  changeType: text("change_type").notNull(), // insert, delete, replace
+  position: integer("position"), // Position in the document
+  content: text("content"), // New content or deleted content
+  previousContent: text("previous_content"), // For tracking history
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
+export const insertDocumentChangeSchema = createInsertSchema(documentChanges).pick({
+  bookId: true,
+  chapterId: true,
+  userId: true,
+  changeType: true,
+  position: true,
+  content: true,
+  previousContent: true,
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -197,6 +248,12 @@ export type InsertBookmark = z.infer<typeof insertBookmarkSchema>;
 
 export type Annotation = typeof annotations.$inferSelect;
 export type InsertAnnotation = z.infer<typeof insertAnnotationSchema>;
+
+export type Collaborator = typeof collaborators.$inferSelect;
+export type InsertCollaborator = z.infer<typeof insertCollaboratorSchema>;
+
+export type DocumentChange = typeof documentChanges.$inferSelect;
+export type InsertDocumentChange = z.infer<typeof insertDocumentChangeSchema>;
 
 // Extended category schema with display names
 export const BOOK_CATEGORIES = [
