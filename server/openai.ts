@@ -4,6 +4,8 @@ import path from "path";
 import { createWriteStream } from "fs";
 import { promisify } from "util";
 import { pipeline } from "stream";
+// Import functions from Gemini implementation
+import * as geminiAPI from "./gemini";
 
 // Initialize OpenAI client if API key is available
 let openai: OpenAI | null = null;
@@ -14,7 +16,7 @@ try {
     });
     console.log("OpenAI client initialized successfully");
   } else {
-    console.warn("OPENAI_API_KEY not found in environment variables. Using fallback functions for development.");
+    console.warn("OPENAI_API_KEY not found in environment variables. Using Gemini API instead.");
   }
 } catch (error) {
   console.error("Error initializing OpenAI client:", error);
