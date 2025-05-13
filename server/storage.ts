@@ -693,4 +693,417 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+import { db } from './db';
+import { eq, and, desc, or, like, sql, ilike, gt, gte, lt, lte, isNull, asc } from 'drizzle-orm';
+
+export class DatabaseStorage implements IStorage {
+  // User methods
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  // Book methods
+  async getBook(id: number): Promise<Book | undefined> {
+    const [book] = await db.select().from(books).where(eq(books.id, id));
+    return book || undefined;
+  }
+
+  async getBooks(limit: number = 20, offset: number = 0): Promise<Book[]> {
+    return await db.select().from(books).limit(limit).offset(offset);
+  }
+
+  async getBooksByAuthor(authorId: number): Promise<Book[]> {
+    return await db.select().from(books).where(eq(books.authorId, authorId));
+  }
+
+  async getBooksByCategory(category: string): Promise<Book[]> {
+    return await db.select().from(books).where(eq(books.category, category));
+  }
+
+  async searchBooks(query: string): Promise<Book[]> {
+    return await db
+      .select()
+      .from(books)
+      .where(
+        or(
+          ilike(books.title, `%${query}%`),
+          ilike(books.description, `%${query}%`)
+        )
+      );
+  }
+
+  async getAIGeneratedBooks(authorId: number): Promise<Book[]> {
+    return await db
+      .select()
+      .from(books)
+      .where(
+        and(
+          eq(books.authorId, authorId),
+          eq(books.generatedByAI, true)
+        )
+      );
+  }
+
+  async createBook(book: InsertBook): Promise<Book> {
+    const [newBook] = await db
+      .insert(books)
+      .values(book)
+      .returning();
+    return newBook;
+  }
+
+  async createAIGeneratedBook(book: InsertBook): Promise<Book> {
+    const bookWithAI = { ...book, generatedByAI: true };
+    const [newBook] = await db
+      .insert(books)
+      .values(bookWithAI)
+      .returning();
+    return newBook;
+  }
+
+  async updateBook(id: number, book: Partial<InsertBook>): Promise<Book | undefined> {
+    const [updatedBook] = await db
+      .update(books)
+      .set(book)
+      .where(eq(books.id, id))
+      .returning();
+    return updatedBook || undefined;
+  }
+
+  async deleteBook(id: number): Promise<boolean> {
+    const [deleted] = await db
+      .delete(books)
+      .where(eq(books.id, id))
+      .returning({ id: books.id });
+    return !!deleted;
+  }
+
+  // Review methods
+  async getReview(id: number): Promise<Review | undefined> {
+    const [review] = await db.select().from(reviews).where(eq(reviews.id, id));
+    return review || undefined;
+  }
+
+  async getReviewsByBook(bookId: number): Promise<Review[]> {
+    return await db.select().from(reviews).where(eq(reviews.bookId, bookId));
+  }
+
+  async getReviewsByUser(userId: number): Promise<Review[]> {
+    return await db.select().from(reviews).where(eq(reviews.userId, userId));
+  }
+
+  async createReview(review: InsertReview): Promise<Review> {
+    const [newReview] = await db
+      .insert(reviews)
+      .values(review)
+      .returning();
+    return newReview;
+  }
+
+  async updateReview(id: number, review: Partial<InsertReview>): Promise<Review | undefined> {
+    const [updatedReview] = await db
+      .update(reviews)
+      .set(review)
+      .where(eq(reviews.id, id))
+      .returning();
+    return updatedReview || undefined;
+  }
+
+  async deleteReview(id: number): Promise<boolean> {
+    const [deleted] = await db
+      .delete(reviews)
+      .where(eq(reviews.id, id))
+      .returning({ id: reviews.id });
+    return !!deleted;
+  }
+
+  // Reading progress methods
+  async getReadingProgress(userId: number, bookId: number): Promise<ReadingProgress | undefined> {
+    const [progress] = await db
+      .select()
+      .from(readingProgresses)
+      .where(
+        and(
+          eq(readingProgresses.userId, userId),
+          eq(readingProgresses.bookId, bookId)
+        )
+      );
+    return progress || undefined;
+  }
+
+  async getReadingProgressesByUser(userId: number): Promise<ReadingProgress[]> {
+    return await db
+      .select()
+      .from(readingProgresses)
+      .where(eq(readingProgresses.userId, userId));
+  }
+
+  async createReadingProgress(progress: InsertReadingProgress): Promise<ReadingProgress> {
+    const [newProgress] = await db
+      .insert(readingProgresses)
+      .values(progress)
+      .returning();
+    return newProgress;
+  }
+
+  async updateReadingProgress(id: number, progress: Partial<InsertReadingProgress>): Promise<ReadingProgress | undefined> {
+    const [updatedProgress] = await db
+      .update(readingProgresses)
+      .set(progress)
+      .where(eq(readingProgresses.id, id))
+      .returning();
+    return updatedProgress || undefined;
+  }
+
+  // Bookmark methods
+  async getBookmark(id: number): Promise<Bookmark | undefined> {
+    const [bookmark] = await db.select().from(bookmarks).where(eq(bookmarks.id, id));
+    return bookmark || undefined;
+  }
+
+  async getBookmarksByUser(userId: number): Promise<Bookmark[]> {
+    return await db.select().from(bookmarks).where(eq(bookmarks.userId, userId));
+  }
+
+  async getBookmarksByBook(bookId: number, userId: number): Promise<Bookmark[]> {
+    return await db
+      .select()
+      .from(bookmarks)
+      .where(
+        and(
+          eq(bookmarks.bookId, bookId),
+          eq(bookmarks.userId, userId)
+        )
+      );
+  }
+
+  async createBookmark(bookmark: InsertBookmark): Promise<Bookmark> {
+    const [newBookmark] = await db
+      .insert(bookmarks)
+      .values(bookmark)
+      .returning();
+    return newBookmark;
+  }
+
+  async updateBookmark(id: number, bookmark: Partial<InsertBookmark>): Promise<Bookmark | undefined> {
+    const [updatedBookmark] = await db
+      .update(bookmarks)
+      .set(bookmark)
+      .where(eq(bookmarks.id, id))
+      .returning();
+    return updatedBookmark || undefined;
+  }
+
+  async deleteBookmark(id: number): Promise<boolean> {
+    const [deleted] = await db
+      .delete(bookmarks)
+      .where(eq(bookmarks.id, id))
+      .returning({ id: bookmarks.id });
+    return !!deleted;
+  }
+
+  // Annotation methods
+  async getAnnotation(id: number): Promise<Annotation | undefined> {
+    const [annotation] = await db.select().from(annotations).where(eq(annotations.id, id));
+    return annotation || undefined;
+  }
+
+  async getAnnotationsByUser(userId: number): Promise<Annotation[]> {
+    return await db.select().from(annotations).where(eq(annotations.userId, userId));
+  }
+
+  async getAnnotationsByBook(bookId: number, userId: number): Promise<Annotation[]> {
+    return await db
+      .select()
+      .from(annotations)
+      .where(
+        and(
+          eq(annotations.bookId, bookId),
+          eq(annotations.userId, userId)
+        )
+      );
+  }
+
+  async createAnnotation(annotation: InsertAnnotation): Promise<Annotation> {
+    const [newAnnotation] = await db
+      .insert(annotations)
+      .values(annotation)
+      .returning();
+    return newAnnotation;
+  }
+
+  async updateAnnotation(id: number, annotation: Partial<InsertAnnotation>): Promise<Annotation | undefined> {
+    const [updatedAnnotation] = await db
+      .update(annotations)
+      .set(annotation)
+      .where(eq(annotations.id, id))
+      .returning();
+    return updatedAnnotation || undefined;
+  }
+
+  async deleteAnnotation(id: number): Promise<boolean> {
+    const [deleted] = await db
+      .delete(annotations)
+      .where(eq(annotations.id, id))
+      .returning({ id: annotations.id });
+    return !!deleted;
+  }
+
+  // Collaborator methods
+  async getCollaborator(id: number): Promise<Collaborator | undefined> {
+    const [collaborator] = await db.select().from(collaborators).where(eq(collaborators.id, id));
+    return collaborator || undefined;
+  }
+
+  async getCollaboratorsByBook(bookId: number): Promise<Collaborator[]> {
+    return await db.select().from(collaborators).where(eq(collaborators.bookId, bookId));
+  }
+
+  async getCollaboratorsByUser(userId: number): Promise<Collaborator[]> {
+    return await db.select().from(collaborators).where(eq(collaborators.userId, userId));
+  }
+
+  async getCollaborationsByUserAndStatus(userId: number, status: string): Promise<Collaborator[]> {
+    return await db
+      .select()
+      .from(collaborators)
+      .where(
+        and(
+          eq(collaborators.userId, userId),
+          eq(collaborators.status, status)
+        )
+      );
+  }
+
+  async checkCollaborationPermission(userId: number, bookId: number): Promise<Collaborator | undefined> {
+    const [collaborator] = await db
+      .select()
+      .from(collaborators)
+      .where(
+        and(
+          eq(collaborators.userId, userId),
+          eq(collaborators.bookId, bookId),
+          eq(collaborators.status, 'accepted')
+        )
+      );
+    return collaborator || undefined;
+  }
+
+  async inviteCollaborator(collaborator: InsertCollaborator): Promise<Collaborator> {
+    const [newCollaborator] = await db
+      .insert(collaborators)
+      .values(collaborator)
+      .returning();
+    return newCollaborator;
+  }
+
+  async updateCollaboratorStatus(id: number, status: string, acceptedAt?: Date): Promise<Collaborator | undefined> {
+    const updateData: any = { status };
+    if (acceptedAt) {
+      updateData.acceptedAt = acceptedAt;
+    }
+
+    const [updatedCollaborator] = await db
+      .update(collaborators)
+      .set(updateData)
+      .where(eq(collaborators.id, id))
+      .returning();
+    return updatedCollaborator || undefined;
+  }
+
+  async updateCollaboratorRole(id: number, role: string): Promise<Collaborator | undefined> {
+    const [updatedCollaborator] = await db
+      .update(collaborators)
+      .set({ role })
+      .where(eq(collaborators.id, id))
+      .returning();
+    return updatedCollaborator || undefined;
+  }
+
+  async removeCollaborator(id: number): Promise<boolean> {
+    const [deleted] = await db
+      .delete(collaborators)
+      .where(eq(collaborators.id, id))
+      .returning({ id: collaborators.id });
+    return !!deleted;
+  }
+
+  // Document change methods
+  async getDocumentChanges(bookId: number, limit: number = 50, offset: number = 0): Promise<DocumentChange[]> {
+    return await db
+      .select()
+      .from(documentChanges)
+      .where(eq(documentChanges.bookId, bookId))
+      .orderBy(desc(documentChanges.timestamp))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getDocumentChangesByChapter(bookId: number, chapterId: number): Promise<DocumentChange[]> {
+    return await db
+      .select()
+      .from(documentChanges)
+      .where(
+        and(
+          eq(documentChanges.bookId, bookId),
+          eq(documentChanges.chapterId, chapterId)
+        )
+      )
+      .orderBy(desc(documentChanges.timestamp));
+  }
+
+  async createDocumentChange(change: InsertDocumentChange): Promise<DocumentChange> {
+    const [newChange] = await db
+      .insert(documentChanges)
+      .values(change)
+      .returning();
+    return newChange;
+  }
+
+  async getLatestDocumentChanges(bookId: number, userId?: number): Promise<DocumentChange[]> {
+    let query = db
+      .select()
+      .from(documentChanges)
+      .where(eq(documentChanges.bookId, bookId))
+      .orderBy(desc(documentChanges.timestamp))
+      .limit(20);
+    
+    if (userId) {
+      query = db
+        .select()
+        .from(documentChanges)
+        .where(
+          and(
+            eq(documentChanges.bookId, bookId),
+            eq(documentChanges.userId, userId)
+          )
+        )
+        .orderBy(desc(documentChanges.timestamp))
+        .limit(20);
+    }
+    
+    return await query;
+  }
+}
+
+// Use database storage for production and testing
+export const storage = new DatabaseStorage();
