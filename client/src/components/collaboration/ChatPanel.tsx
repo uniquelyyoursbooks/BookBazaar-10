@@ -1,16 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { format } from 'date-fns';
-import { Send } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useQuery } from '@tanstack/react-query';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useCollaboration } from '@/hooks/use-collaboration';
+import { formatDistanceToNow } from 'date-fns';
+import { Send } from 'lucide-react';
 
 interface ChatMessage {
   userId: number;
+  username?: string;
   message: string;
   timestamp: Date;
 }
@@ -18,124 +18,170 @@ interface ChatMessage {
 interface ChatPanelProps {
   bookId: number;
   userId: number;
-  messages: ChatMessage[];
-  onSendMessage: (message: string) => boolean;
-  getUserColor?: (userId: number) => string;
+  username?: string;
 }
 
-export default function ChatPanel({
-  bookId,
-  userId,
-  messages,
-  onSendMessage,
-  getUserColor = () => '#000'
-}: ChatPanelProps) {
-  const [inputValue, setInputValue] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+// Color array for distinguishing users
+const USER_COLORS = [
+  '#4285F4', // Google Blue
+  '#34A853', // Google Green
+  '#FBBC05', // Google Yellow
+  '#EA4335', // Google Red
+  '#8E44AD', // Purple
+  '#3498DB', // Blue
+  '#1ABC9C', // Teal
+  '#F39C12', // Orange
+];
+
+const ChatPanel: React.FC<ChatPanelProps> = ({ bookId, userId, username = 'You' }) => {
+  const [message, setMessage] = useState('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   
-  // Fetch collaborator details for showing names in the chat
-  const { data: collaborators } = useQuery({
-    queryKey: [`/api/books/${bookId}/collaborators`],
-    staleTime: 30000, // 30 seconds
+  // Setup collaboration hooks
+  const { sendMessage, lastMessage } = useCollaboration({
+    bookId,
+    userId
   });
+  
+  // Handle incoming messages
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'chat') {
+      setChatMessages(prev => [
+        ...prev,
+        {
+          userId: lastMessage.userId,
+          username: lastMessage.username,
+          message: lastMessage.message || '',
+          timestamp: new Date(lastMessage.timestamp)
+        }
+      ]);
+    }
+  }, [lastMessage]);
   
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [chatMessages]);
   
-  // Get user info from collaborators data
-  const getUserInfo = (userId: number) => {
-    if (!collaborators) return { username: 'Unknown', fullName: 'Unknown User' };
+  // Send message handler
+  const handleSendMessage = () => {
+    if (!message.trim()) return;
     
-    const collaborator = collaborators.find((c: any) => c.userId === userId);
-    return collaborator || { username: 'Unknown', fullName: 'Unknown User' };
+    // Create a new message
+    const newMessage: ChatMessage = {
+      userId,
+      username,
+      message: message.trim(),
+      timestamp: new Date()
+    };
+    
+    // Add to local messages
+    setChatMessages(prev => [...prev, newMessage]);
+    
+    // Send via WebSocket
+    sendMessage({
+      type: 'chat',
+      userId,
+      message: message.trim(),
+      username,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Clear input
+    setMessage('');
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputValue.trim()) {
-      const success = onSendMessage(inputValue);
-      if (success) {
-        setInputValue('');
-      }
+  // Handle enter key to send message
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
   
   return (
-    <Card className="flex flex-col h-full">
-      <CardHeader className="p-4 pb-0">
-        <CardTitle className="text-sm">Chat</CardTitle>
-      </CardHeader>
-      <CardContent className="flex-grow p-4 pt-2 overflow-hidden">
-        <ScrollArea className="h-[300px] pr-2">
-          {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-muted-foreground">No messages yet</p>
+    <div className="h-full flex flex-col">
+      <div className="px-4 py-3 border-b">
+        <h3 className="font-medium">Chat</h3>
+        <p className="text-xs text-muted-foreground">Communicate with collaborators</p>
+      </div>
+      
+      <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+        <div className="space-y-4">
+          {chatMessages.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              <p>No messages yet. Start the conversation!</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {messages.map((msg, idx) => {
-                const isCurrentUser = msg.userId === userId;
-                const userInfo = getUserInfo(msg.userId);
-                const messageDate = new Date(msg.timestamp);
-                
-                return (
-                  <div
-                    key={idx}
-                    className={`flex items-start gap-2 ${isCurrentUser ? 'flex-row-reverse' : ''}`}
+            chatMessages.map((msg, index) => {
+              const isCurrentUser = msg.userId === userId;
+              const userColor = USER_COLORS[msg.userId % USER_COLORS.length];
+              
+              return (
+                <div 
+                  key={index} 
+                  className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div 
+                    className={`max-w-[80%] ${
+                      isCurrentUser 
+                        ? 'bg-primary text-primary-foreground rounded-tl-lg rounded-tr-lg rounded-bl-lg' 
+                        : 'bg-muted rounded-tl-lg rounded-tr-lg rounded-br-lg'
+                    } px-3 py-2`}
                   >
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={`https://avatar.vercel.sh/${userInfo.username}`} />
-                            <AvatarFallback style={{ backgroundColor: getUserColor(msg.userId) }}>
-                              {userInfo.fullName?.charAt(0) || userInfo.username?.charAt(0) || '?'}
-                            </AvatarFallback>
-                          </Avatar>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          <p>{userInfo.fullName || userInfo.username}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    
-                    <div
-                      className={`rounded-lg px-3 py-2 max-w-[80%] text-sm
-                        ${isCurrentUser 
-                          ? 'bg-primary text-primary-foreground' 
-                          : 'bg-muted'
-                        }`}
-                    >
-                      <div>{msg.message}</div>
-                      <div className={`text-xs mt-1 ${isCurrentUser ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                        {format(messageDate, 'HH:mm')}
+                    {!isCurrentUser && (
+                      <div className="flex items-center space-x-2 mb-1">
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback 
+                            style={{ backgroundColor: userColor }}
+                            className="text-white text-xs"
+                          >
+                            {msg.username?.charAt(0) || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs font-medium">
+                          {msg.username || `User ${msg.userId}`}
+                        </span>
                       </div>
+                    )}
+                    <p className="text-sm whitespace-pre-wrap break-words">{msg.message}</p>
+                    <div className="text-xs opacity-70 mt-1 text-right">
+                      {formatDistanceToNow(msg.timestamp, { addSuffix: true })}
                     </div>
                   </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-            </div>
+                </div>
+              );
+            })
           )}
-        </ScrollArea>
-      </CardContent>
-      <CardFooter className="p-3 pt-0">
-        <form onSubmit={handleSubmit} className="flex w-full gap-2">
-          <Input
+        </div>
+      </ScrollArea>
+      
+      <Separator />
+      
+      <div className="p-3">
+        <div className="flex items-end gap-2">
+          <Textarea
             placeholder="Type a message..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            className="flex-grow"
+            className="min-h-[80px] resize-none"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
-          <Button type="submit" size="sm" className="px-2">
+          <Button 
+            size="icon" 
+            onClick={handleSendMessage}
+            disabled={!message.trim()}
+            className="mb-1"
+          >
             <Send className="h-4 w-4" />
           </Button>
-        </form>
-      </CardFooter>
-    </Card>
+        </div>
+      </div>
+    </div>
   );
-}
+};
+
+export default ChatPanel;

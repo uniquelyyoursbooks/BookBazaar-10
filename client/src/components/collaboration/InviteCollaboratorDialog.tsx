@@ -1,10 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
-
 import {
   Dialog,
   DialogContent,
@@ -12,16 +10,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -29,126 +29,107 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-
-const inviteCollaboratorSchema = z.object({
-  email: z.string().email().optional(),
-  username: z.string().min(1).optional(),
-  role: z.enum(['co-author', 'editor', 'viewer'])
-}).refine(data => data.email || data.username, {
-  message: "Either email or username is required",
-  path: ["email"]
-});
-
-type InviteCollaboratorFormValues = z.infer<typeof inviteCollaboratorSchema>;
+import { apiRequest } from '@/lib/queryClient';
 
 interface InviteCollaboratorDialogProps {
   bookId: number;
-  trigger: React.ReactNode;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export default function InviteCollaboratorDialog({ bookId, trigger }: InviteCollaboratorDialogProps) {
-  const [open, setOpen] = React.useState(false);
+// Define form schema
+const inviteSchema = z.object({
+  email: z.string().email({ message: 'Please enter a valid email address' }),
+  role: z.enum(['co-author', 'editor', 'viewer'], {
+    required_error: 'Please select a role',
+  }),
+});
+
+type InviteFormValues = z.infer<typeof inviteSchema>;
+
+const InviteCollaboratorDialog: React.FC<InviteCollaboratorDialogProps> = ({
+  bookId,
+  open,
+  onOpenChange,
+}) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  const form = useForm<InviteCollaboratorFormValues>({
-    resolver: zodResolver(inviteCollaboratorSchema),
+  const form = useForm<InviteFormValues>({
+    resolver: zodResolver(inviteSchema),
     defaultValues: {
       email: '',
-      username: '',
-      role: 'co-author'
-    }
+      role: 'editor',
+    },
   });
   
+  // Invite mutation
   const inviteMutation = useMutation({
-    mutationFn: async (data: InviteCollaboratorFormValues) => {
-      return await apiRequest(`/api/books/${bookId}/collaborators`, 'POST', data);
+    mutationFn: async (data: InviteFormValues) => {
+      return await apiRequest({
+        url: `/api/books/${bookId}/collaborators`,
+        method: 'POST',
+        data: {
+          email: data.email,
+          role: data.role,
+        },
+      });
     },
     onSuccess: () => {
       toast({
         title: 'Invitation sent',
-        description: 'The user has been invited to collaborate on this book.',
+        description: 'The collaborator has been invited successfully.',
       });
       
-      // Invalidate the collaborators query to refresh the list
+      // Invalidate queries to update the UI
       queryClient.invalidateQueries({ queryKey: [`/api/books/${bookId}/collaborators`] });
       
-      // Reset the form and close the dialog
+      // Reset form and close dialog
       form.reset();
-      setOpen(false);
+      onOpenChange(false);
     },
     onError: (error: any) => {
       toast({
-        title: 'Failed to send invitation',
-        description: error.message || 'Please try again later.',
-        variant: 'destructive'
+        title: 'Failed to invite collaborator',
+        description: error.message || 'An error occurred while sending the invitation.',
+        variant: 'destructive',
       });
-    }
+    },
   });
   
-  const onSubmit = (data: InviteCollaboratorFormValues) => {
-    inviteMutation.mutate(data);
+  // Handle form submission
+  const onSubmit = (values: InviteFormValues) => {
+    inviteMutation.mutate(values);
   };
   
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger}
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Invite Collaborator</DialogTitle>
           <DialogDescription>
-            Invite someone to collaborate on this book. They will receive an invitation
-            to join as a collaborator.
+            Send an invitation to collaborate on this book.
           </DialogDescription>
         </DialogHeader>
         
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Email address</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="collaborator@example.com" 
+                    <Input
+                      placeholder="collaborator@example.com"
                       {...field}
-                      value={field.value || ''}
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            
-            <div className="relative flex items-center justify-center">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <span className="relative bg-background px-2 text-xs text-muted-foreground">
-                OR
-              </span>
-            </div>
-            
-            <FormField
-              control={form.control}
-              name="username"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Username</FormLabel>
-                  <FormControl>
-                    <Input 
-                      placeholder="username" 
-                      {...field}
-                      value={field.value || ''}
-                    />
-                  </FormControl>
+                  <FormDescription>
+                    Enter the email address of the person you want to invite.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -160,21 +141,24 @@ export default function InviteCollaboratorDialog({ bookId, trigger }: InviteColl
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Role</FormLabel>
-                  <Select 
-                    onValueChange={field.onChange} 
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
+                  <FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a role" />
                       </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="co-author">Co-Author (can edit content)</SelectItem>
-                      <SelectItem value="editor">Editor (can suggest edits)</SelectItem>
-                      <SelectItem value="viewer">Viewer (read-only access)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                      <SelectContent>
+                        <SelectItem value="co-author">Co-Author (Can edit and invite others)</SelectItem>
+                        <SelectItem value="editor">Editor (Can edit content)</SelectItem>
+                        <SelectItem value="viewer">Viewer (Read-only access)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormDescription>
+                    Choose the level of access for this collaborator.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -184,7 +168,7 @@ export default function InviteCollaboratorDialog({ bookId, trigger }: InviteColl
               <Button 
                 type="button" 
                 variant="outline" 
-                onClick={() => setOpen(false)}
+                onClick={() => onOpenChange(false)}
                 disabled={inviteMutation.isPending}
               >
                 Cancel
@@ -192,9 +176,8 @@ export default function InviteCollaboratorDialog({ bookId, trigger }: InviteColl
               <Button 
                 type="submit"
                 disabled={inviteMutation.isPending}
-                className="ml-2"
               >
-                {inviteMutation.isPending ? 'Sending...' : 'Send Invitation'}
+                {inviteMutation.isPending ? 'Sending invitation...' : 'Send invitation'}
               </Button>
             </DialogFooter>
           </form>
@@ -202,4 +185,6 @@ export default function InviteCollaboratorDialog({ bookId, trigger }: InviteColl
       </DialogContent>
     </Dialog>
   );
-}
+};
+
+export default InviteCollaboratorDialog;

@@ -1,5 +1,13 @@
-export { default as CollaboratorList } from './CollaboratorList';
-export { default as ChatPanel } from './ChatPanel';
-export { default as InviteCollaboratorDialog } from './InviteCollaboratorDialog';
-export { default as CollaborationPanel } from './CollaborationPanel';
-export { default as CollaborativeEditor } from './CollaborativeEditor';
+import ChatPanel from './ChatPanel';
+import CollaborationPanel from './CollaborationPanel';
+import CollaborativeEditor from './CollaborativeEditor';
+import CollaboratorList from './CollaboratorList';
+import InviteCollaboratorDialog from './InviteCollaboratorDialog';
+
+export {
+  ChatPanel,
+  CollaborationPanel,
+  CollaborativeEditor,
+  CollaboratorList,
+  InviteCollaboratorDialog
+};

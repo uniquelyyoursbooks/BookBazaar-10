@@ -159,7 +159,9 @@ const CollaborativeEditor: React.FC<CollaborativeEditorProps> = ({
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'contentChange' && lastMessage.userId !== userId) {
       // Update content with remote changes
-      setContent(lastMessage.content);
+      if (typeof lastMessage.content === 'string') {
+        setContent(lastMessage.content);
+      }
     }
   }, [lastMessage, userId]);
 
