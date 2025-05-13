@@ -1282,6 +1282,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Get chapter content
+  app.get('/api/books/:bookId/chapters/:chapterId', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { bookId, chapterId } = req.params;
+      const bookIdNum = parseInt(bookId);
+      const chapterIdNum = parseInt(chapterId);
+      
+      // Check if user has access to this book
+      const book = await storage.getBook(bookIdNum);
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      // Check if user has proper access (author or collaborator)
+      if (book.authorId !== userId) {
+        const permission = await storage.checkCollaborationPermission(userId, bookIdNum);
+        if (!permission) {
+          return res.status(403).json({ message: 'Unauthorized access to this chapter' });
+        }
+      }
+      
+      // Get chapter content from book outline
+      if (!book.outline || !book.outline.chapters || chapterIdNum < 1 || chapterIdNum > book.outline.chapters.length) {
+        return res.status(404).json({ message: 'Chapter not found' });
+      }
+      
+      const chapter = book.outline.chapters[chapterIdNum - 1];
+      
+      res.json({
+        id: chapterIdNum,
+        bookId: bookIdNum,
+        title: chapter.title,
+        content: chapter.content,
+        orderIndex: chapterIdNum - 1
+      });
+    } catch (error) {
+      console.error('Error getting chapter content:', error);
+      res.status(500).json({ message: 'Server error while fetching chapter content' });
+    }
+  });
+  
+  // Update chapter content
+  app.patch('/api/books/:bookId/chapters/:chapterId', validateAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { bookId, chapterId } = req.params;
+      const { content } = req.body;
+      const bookIdNum = parseInt(bookId);
+      const chapterIdNum = parseInt(chapterId);
+      
+      // Check if user has access to this book
+      const book = await storage.getBook(bookIdNum);
+      if (!book) {
+        return res.status(404).json({ message: 'Book not found' });
+      }
+      
+      // Check if user has proper access (author or collaborator)
+      if (book.authorId !== userId) {
+        const permission = await storage.checkCollaborationPermission(userId, bookIdNum);
+        if (!permission) {
+          return res.status(403).json({ message: 'Unauthorized access to this chapter' });
+        }
+      }
+      
+      // Get chapter content from book outline
+      if (!book.outline || !book.outline.chapters || chapterIdNum < 1 || chapterIdNum > book.outline.chapters.length) {
+        return res.status(404).json({ message: 'Chapter not found' });
+      }
+      
+      // Update the chapter content
+      const updatedOutline = { ...book.outline };
+      updatedOutline.chapters[chapterIdNum - 1].content = content;
+      
+      // Save the updated book
+      await storage.updateBook(bookIdNum, { outline: updatedOutline });
+      
+      res.json({
+        id: chapterIdNum,
+        bookId: bookIdNum,
+        title: updatedOutline.chapters[chapterIdNum - 1].title,
+        content: updatedOutline.chapters[chapterIdNum - 1].content,
+        orderIndex: chapterIdNum - 1
+      });
+    } catch (error) {
+      console.error('Error updating chapter content:', error);
+      res.status(500).json({ message: 'Server error while updating chapter content' });
+    }
+  });
+  
   // Get real-time document changes for collaborative editing
   app.get('/api/books/:bookId/changes', validateAuth, async (req, res) => {
     try {

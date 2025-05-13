@@ -31,7 +31,7 @@ import { getBookCoverUrl } from "@/lib/utils";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
-import { Users } from "lucide-react";
+import { Users, FileEdit } from "lucide-react";
 import { CollaborationPanel } from "@/components/collaboration";
 
 // Edit book schema
@@ -275,6 +275,58 @@ const EditBook: React.FC = () => {
         </p>
       </div>
 
+      {/* Book Chapters Card */}
+      <Card className="mb-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Book Chapters</CardTitle>
+            <CardDescription>
+              Manage and edit your book's chapters
+            </CardDescription>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setCollaborationOpen(true)}
+            className="gap-1"
+          >
+            <Users className="h-4 w-4" />
+            Collaborators
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {bookLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : book?.outline && book.outline.chapters && book.outline.chapters.length > 0 ? (
+            <div className="space-y-2">
+              {book.outline.chapters.map((chapter, index) => (
+                <div key={index} className="flex items-center justify-between p-3 border rounded-md hover:bg-accent">
+                  <div className="font-medium">{chapter.title || `Chapter ${index + 1}`}</div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate(`/dashboard/edit/${bookId}/chapter/${index + 1}`)}
+                    className="gap-1"
+                  >
+                    <FileEdit className="h-4 w-4" />
+                    Edit
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No chapters found. Add chapters to your book to get started.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      
+      {/* Book Details Card */}
       <Card>
         <CardHeader>
           <CardTitle>Book Details</CardTitle>
@@ -472,6 +524,19 @@ const EditBook: React.FC = () => {
           </Form>
         </CardContent>
       </Card>
+      
+      {/* Collaboration panel (slide-in) */}
+      {collaborationOpen && (
+        <div className="fixed inset-y-0 right-0 z-50 w-80 bg-background border-l shadow-lg transform transition-transform">
+          <CollaborationPanel
+            isOpen={collaborationOpen} 
+            onClose={() => setCollaborationOpen(false)}
+            bookId={bookId}
+            userId={(book?.authorId) || 0}
+            isOwner={true}
+          />
+        </div>
+      )}
     </div>
   );
 };

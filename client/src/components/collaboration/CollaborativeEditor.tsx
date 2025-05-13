@@ -11,6 +11,16 @@ import { useCollaboration } from '@/hooks/use-collaboration';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 
+// Interface for collaborator information
+interface Collaborator {
+  id: number;
+  userId: number;
+  username: string;
+  fullName: string;
+  role: string;
+  inviteStatus: string;
+}
+
 interface CollaborativeEditorProps {
   bookId: number;
   userId: number;
@@ -56,16 +66,16 @@ export default function CollaborativeEditor({
   });
   
   // Fetch collaborator information for displaying names
-  const { data: collaborators } = useQuery({
+  const { data: collaborators = [] } = useQuery<Collaborator[]>({
     queryKey: [`/api/books/${bookId}/collaborators`],
     staleTime: 30000 // 30 seconds
   });
   
   // Get collaborator name by user ID
   const getCollaboratorName = (userId: number) => {
-    if (!collaborators) return 'Unknown';
+    if (!collaborators || collaborators.length === 0) return 'Unknown';
     
-    const collaborator = collaborators.find((c: any) => c.userId === userId);
+    const collaborator = collaborators.find((c) => c.userId === userId);
     return collaborator ? collaborator.fullName || collaborator.username : 'Unknown';
   };
   
@@ -142,7 +152,6 @@ export default function CollaborativeEditor({
     
     // Get editor position and dimensions
     const textArea = editorRef.current;
-    const textAreaRect = textArea.getBoundingClientRect();
     
     // Position calculation helper
     const positionToCoordinates = (position: number) => {
@@ -194,7 +203,7 @@ export default function CollaborativeEditor({
       container.appendChild(cursor);
       container.appendChild(nameTag);
     });
-  }, [cursorPositions, getUserColor, userId, getCollaboratorName]);
+  }, [cursorPositions, getUserColor, userId]);
   
   // Handle content changes and send to collaborators
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -260,13 +269,17 @@ export default function CollaborativeEditor({
         onSave(content);
       } else if (chapterId) {
         // If no save handler is provided, use the API
-        await apiRequest(`/api/books/${bookId}/chapters/${chapterId}`, 'PATCH', {
-          content
+        await apiRequest({
+          url: `/api/books/${bookId}/chapters/${chapterId}`, 
+          method: 'PATCH', 
+          data: { content }
         });
       } else {
         // Save the entire book content
-        await apiRequest(`/api/books/${bookId}/content`, 'PATCH', {
-          content
+        await apiRequest({
+          url: `/api/books/${bookId}/content`, 
+          method: 'PATCH', 
+          data: { content }
         });
       }
       
