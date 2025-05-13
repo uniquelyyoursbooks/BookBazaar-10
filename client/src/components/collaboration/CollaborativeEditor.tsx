@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,406 +18,295 @@ interface Collaborator {
   username: string;
   fullName: string;
   role: string;
-  inviteStatus: string;
+  color?: string;
+  cursorPosition?: number;
+  online: boolean;
 }
 
+// Interface for cursor position
+interface CursorPosition {
+  userId: number;
+  position: number;
+  username: string;
+  color: string;
+}
+
+// Interface for editor props
 interface CollaborativeEditorProps {
   bookId: number;
   userId: number;
-  chapterId?: number;
-  initialContent?: string;
-  onSave?: (content: string) => void;
+  chapterId: number;
+  initialContent: string;
 }
 
-export default function CollaborativeEditor({
+// Color array for distinguishing users
+const USER_COLORS = [
+  '#4285F4', // Google Blue
+  '#34A853', // Google Green
+  '#FBBC05', // Google Yellow
+  '#EA4335', // Google Red
+  '#8E44AD', // Purple
+  '#3498DB', // Blue
+  '#1ABC9C', // Teal
+  '#F39C12', // Orange
+];
+
+const CollaborativeEditor: React.FC<CollaborativeEditorProps> = ({
   bookId,
   userId,
   chapterId,
-  initialContent = '',
-  onSave
-}: CollaborativeEditorProps) {
-  const [content, setContent] = useState(initialContent);
-  const [lastSavedContent, setLastSavedContent] = useState(initialContent);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isProcessingChanges, setIsProcessingChanges] = useState(false);
-  const [showActiveUsers, setShowActiveUsers] = useState(false);
-  const { toast } = useToast();
-  
-  // Track cursor positions
+  initialContent,
+}) => {
+  const [content, setContent] = useState(initialContent || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [unsavedChanges, setUnsavedChanges] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
-  const cursorMarkerRef = useRef<HTMLDivElement>(null);
-  const selectionStart = useRef<number>(0);
-  
-  // Set up collaboration hooks
+  const cursorPositionRef = useRef<number>(0);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Get collaborators for this book
+  const { data: collaborators = [] } = useQuery<Collaborator[]>({
+    queryKey: [`/api/books/${bookId}/collaborators`],
+    enabled: bookId > 0,
+  });
+
+  // Setup collaboration hooks
   const {
-    isConnected,
-    activeUsers,
-    receivedChanges,
+    sendMessage,
+    connectedUsers,
+    lastMessage,
     cursorPositions,
-    sendChange,
-    sendCursorPosition,
-    getUserColor,
-    clearReceivedChanges,
-    error
+    updateCursorPosition,
   } = useCollaboration({
     bookId,
     userId,
-    chapterId
+    chapterId,
   });
-  
-  // Fetch collaborator information for displaying names
-  const { data: collaborators = [] } = useQuery<Collaborator[]>({
-    queryKey: [`/api/books/${bookId}/collaborators`],
-    staleTime: 30000 // 30 seconds
-  });
-  
-  // Get collaborator name by user ID
-  const getCollaboratorName = (userId: number) => {
-    if (!collaborators || collaborators.length === 0) return 'Unknown';
-    
-    const collaborator = collaborators.find((c) => c.userId === userId);
-    return collaborator ? collaborator.fullName || collaborator.username : 'Unknown';
-  };
-  
-  // Process changes from other users
-  useEffect(() => {
-    if (receivedChanges.length === 0 || isProcessingChanges) return;
-    
-    // Set processing flag to avoid processing the same changes multiple times
-    setIsProcessingChanges(true);
-    
-    // Sort changes by timestamp
-    const sortedChanges = [...receivedChanges].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
-    
-    // Apply each change sequentially
-    let updatedContent = content;
-    sortedChanges.forEach(change => {
-      switch (change.changeType) {
-        case 'insert':
-          if (change.position !== null && change.content) {
-            updatedContent = 
-              updatedContent.substring(0, change.position) + 
-              change.content + 
-              updatedContent.substring(change.position);
-          }
-          break;
-          
-        case 'delete':
-          if (change.position !== null && change.content) {
-            const deletePosition = change.position;
-            const deleteLength = change.content.length;
-            updatedContent = 
-              updatedContent.substring(0, deletePosition) + 
-              updatedContent.substring(deletePosition + deleteLength);
-          }
-          break;
-          
-        case 'replace':
-          if (change.position !== null && change.content && change.previousContent) {
-            const replacePosition = change.position;
-            const replaceLength = change.previousContent.length;
-            updatedContent = 
-              updatedContent.substring(0, replacePosition) + 
-              change.content + 
-              updatedContent.substring(replacePosition + replaceLength);
-          }
-          break;
-          
-        default:
-          console.warn(`Unknown change type: ${change.changeType}`);
-      }
-    });
-    
-    // Update the content with all changes applied
-    setContent(updatedContent);
-    
-    // Clear the processed changes
-    clearReceivedChanges();
-    
-    // Reset processing flag
-    setIsProcessingChanges(false);
-  }, [receivedChanges, isProcessingChanges, content, clearReceivedChanges]);
-  
-  // Create cursor markers for collaborators
-  useEffect(() => {
-    if (!cursorMarkerRef.current) return;
-    
-    // Clear existing markers
-    const container = cursorMarkerRef.current;
-    container.innerHTML = '';
-    
-    if (!editorRef.current) return;
-    
-    // Get editor position and dimensions
-    const textArea = editorRef.current;
-    
-    // Position calculation helper
-    const positionToCoordinates = (position: number) => {
-      // Create a range to get the position
-      const text = textArea.value;
-      const lines = text.substring(0, position).split('\n');
-      const lineNumber = lines.length - 1;
-      const charPosition = lines[lineNumber].length;
-      
-      // Calculate the height of each line (approximately)
-      const lineHeight = 20; // Approximate line height (px)
-      
-      // Calculate y position
-      const y = lineNumber * lineHeight;
-      
-      // Calculate x position (approximate)
-      const charWidth = 8; // Approximate character width (px)
-      const x = charPosition * charWidth;
-      
-      return { x, y };
-    };
-    
-    // Create cursor markers for each user
-    Object.entries(cursorPositions).forEach(([userIdStr, position]) => {
-      const otherUserId = parseInt(userIdStr);
-      if (otherUserId === userId) return; // Skip own cursor
-      
-      const { x, y } = positionToCoordinates(position);
-      const color = getUserColor(otherUserId);
-      
-      // Create cursor element
-      const cursor = document.createElement('div');
-      cursor.className = 'absolute pointer-events-none';
-      cursor.style.backgroundColor = color;
-      cursor.style.width = '2px';
-      cursor.style.height = '20px';
-      cursor.style.left = `${x}px`;
-      cursor.style.top = `${y}px`;
-      
-      // Create name tag
-      const nameTag = document.createElement('div');
-      nameTag.className = 'absolute text-xs text-white px-1 py-0.5 rounded whitespace-nowrap';
-      nameTag.style.backgroundColor = color;
-      nameTag.style.left = `${x}px`;
-      nameTag.style.top = `${y - 20}px`;
-      nameTag.innerText = getCollaboratorName(otherUserId);
-      
-      // Add to container
-      container.appendChild(cursor);
-      container.appendChild(nameTag);
-    });
-  }, [cursorPositions, getUserColor, userId]);
-  
-  // Handle content changes and send to collaborators
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const target = e.target;
-    const newContent = target.value;
-    const cursorPos = target.selectionStart;
-    selectionStart.current = cursorPos;
-    
-    // Get the difference between the old and new content
-    const oldContent = content;
-    
-    // Simple change detection (this could be more sophisticated)
-    if (newContent.length > oldContent.length) {
-      // Insertion
-      const insertedText = newContent.substring(cursorPos - (newContent.length - oldContent.length), cursorPos);
-      const insertPosition = cursorPos - insertedText.length;
-      
-      // Send the change
-      sendChange('insert', insertPosition, insertedText);
-    } else if (newContent.length < oldContent.length) {
-      // Deletion
-      const diff = oldContent.length - newContent.length;
-      const deletePosition = cursorPos;
-      
-      // Try to determine what was deleted (approximate)
-      const deletedText = oldContent.substring(deletePosition, deletePosition + diff);
-      
-      // Send the change
-      sendChange('delete', deletePosition, deletedText);
-    }
-    
-    // Update the local content
-    setContent(newContent);
-    setHasUnsavedChanges(newContent !== lastSavedContent);
-  };
-  
-  // Debounced cursor position update
-  const debouncedCursorUpdate = useRef(
-    debounce((position: number) => {
-      sendCursorPosition(position);
-    }, 100)
-  ).current;
-  
-  // Handle cursor position changes
-  const handleCursorMove = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
-    const target = e.target as HTMLTextAreaElement;
-    const cursorPos = target.selectionStart;
-    selectionStart.current = cursorPos;
-    
-    // Send the cursor position using a debounced function
-    debouncedCursorUpdate(cursorPos);
-  };
-  
-  // Handle key events
-  const handleKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    handleCursorMove(e);
-  };
-  
-  // Handle saves
-  const handleSave = async () => {
-    try {
-      if (onSave) {
-        onSave(content);
-      } else if (chapterId) {
-        // If no save handler is provided, use the API
-        await apiRequest({
-          url: `/api/books/${bookId}/chapters/${chapterId}`, 
-          method: 'PATCH', 
-          data: { content }
-        });
-      } else {
-        // Save the entire book content
-        await apiRequest({
-          url: `/api/books/${bookId}/content`, 
-          method: 'PATCH', 
-          data: { content }
-        });
-      }
-      
-      setLastSavedContent(content);
-      setHasUnsavedChanges(false);
-      
+
+  // Mutation for saving chapter content
+  const saveContentMutation = useMutation({
+    mutationFn: async (newContent: string) => {
+      return apiRequest({
+        url: `/api/books/${bookId}/chapters/${chapterId}`,
+        method: 'PATCH',
+        data: { content: newContent },
+      });
+    },
+    onSuccess: () => {
+      setUnsavedChanges(false);
+      setIsSaving(false);
       toast({
         title: 'Saved',
-        description: 'Your changes have been saved.',
+        description: 'Your changes have been saved',
       });
-    } catch (error: any) {
+      
+      // Invalidate and refetch chapter data
+      queryClient.invalidateQueries({ queryKey: [`/api/books/${bookId}/chapters/${chapterId}`] });
+    },
+    onError: (error: any) => {
+      setIsSaving(false);
       toast({
-        title: 'Save failed',
-        description: error.message || 'Could not save your changes. Please try again.',
-        variant: 'destructive'
+        title: 'Error saving',
+        description: error.message || 'Failed to save changes',
+        variant: 'destructive',
       });
     }
+  });
+
+  // Debounced save function to prevent too many saving operations
+  const debouncedSave = useRef(
+    debounce((newContent: string) => {
+      saveContentMutation.mutate(newContent);
+    }, 2000)
+  ).current;
+
+  // Auto-save when content changes
+  useEffect(() => {
+    if (content !== initialContent) {
+      setUnsavedChanges(true);
+      debouncedSave(content);
+    }
+  }, [content, initialContent, debouncedSave]);
+
+  // Broadcast cursor position changes
+  const handleCursorPositionChange = () => {
+    if (editorRef.current) {
+      const position = editorRef.current.selectionStart;
+      cursorPositionRef.current = position;
+      updateCursorPosition(position);
+    }
+  };
+
+  // Handle content changes
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    setContent(newContent);
+    
+    // Broadcast change to other users
+    sendMessage({
+      type: 'contentChange',
+      content: newContent,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Also update cursor position
+    handleCursorPositionChange();
+  };
+
+  // Process incoming messages
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'contentChange' && lastMessage.userId !== userId) {
+      // Update content with remote changes
+      setContent(lastMessage.content);
+    }
+  }, [lastMessage, userId]);
+
+  // Manual save handler
+  const handleSave = () => {
+    setIsSaving(true);
+    saveContentMutation.mutate(content);
+  };
+
+  // Generate cursor markers for collaborators
+  const renderCursorMarkers = () => {
+    return cursorPositions
+      .filter(pos => pos.userId !== userId) // Don't show own cursor
+      .map((position) => {
+        const userColor = position.color || USER_COLORS[position.userId % USER_COLORS.length];
+        
+        return (
+          <TooltipProvider key={position.userId}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className="absolute w-0.5 h-5 cursor-pointer"
+                  style={{
+                    backgroundColor: userColor,
+                    left: `${getCursorLeftPosition(position.position)}px`,
+                    top: `${getCursorTopPosition(position.position)}px`,
+                  }}
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{position.username || `User ${position.userId}`}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      });
   };
   
-  return (
-    <Card className="w-full">
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-lg">
-            {chapterId ? 'Chapter Editor' : 'Book Content Editor'}
-          </CardTitle>
+  // Calculate cursor position (simplified version)
+  const getCursorLeftPosition = (position: number) => {
+    // This is a simplified calculation - in a real implementation
+    // you would need to calculate based on character width and wrapping
+    return 20; // Fixed position for demo
+  };
+  
+  const getCursorTopPosition = (position: number) => {
+    // This is a simplified calculation - in a real implementation
+    // you would need to calculate based on line height and content wrapping
+    return 20; // Fixed position for demo
+  };
+
+  // Convert connected users into avatars
+  const renderConnectedUsers = () => {
+    if (connectedUsers.length === 0) return null;
+    
+    return (
+      <div className="flex -space-x-2">
+        {connectedUsers.slice(0, 5).map((user) => {
+          const collaborator = collaborators.find(c => c.userId === user);
+          const initials = collaborator 
+            ? collaborator.fullName.split(' ').map(n => n[0]).join('').toUpperCase()
+            : `U${user}`;
           
-          <div className="flex items-center gap-2">
-            {/* Connection status */}
-            {isConnected ? (
-              <span className="flex items-center text-sm text-green-500">
-                <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
-                Connected
-              </span>
-            ) : (
-              <span className="flex items-center text-sm text-red-500">
-                <span className="w-2 h-2 bg-red-500 rounded-full mr-1"></span>
-                Disconnected
-              </span>
-            )}
-            
-            {/* Active users toggle */}
-            <TooltipProvider>
+          const color = USER_COLORS[user % USER_COLORS.length];
+          
+          return (
+            <TooltipProvider key={user}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="relative"
-                    onClick={() => setShowActiveUsers(!showActiveUsers)}
-                  >
-                    <Users className="h-4 w-4" />
-                    {activeUsers.length > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-white text-[10px] rounded-full flex items-center justify-center">
-                        {activeUsers.length}
-                      </span>
-                    )}
-                  </Button>
+                  <Avatar className="border-2 border-background w-8 h-8">
+                    <AvatarFallback 
+                      style={{ backgroundColor: color }}
+                      className="text-white text-xs"
+                    >
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {activeUsers.length === 0 
-                    ? 'No active collaborators' 
-                    : `${activeUsers.length} active collaborator${activeUsers.length > 1 ? 's' : ''}`}
+                  <p>{collaborator ? collaborator.fullName : `User ${user}`}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          </div>
-        </div>
+          );
+        })}
         
-        {/* Show active users when toggled */}
-        {showActiveUsers && activeUsers.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {activeUsers.map(activeUserId => (
-              <TooltipProvider key={activeUserId}>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Avatar className="h-8 w-8 border-2" style={{ borderColor: getUserColor(activeUserId) }}>
-                      <AvatarFallback style={{ backgroundColor: getUserColor(activeUserId), color: 'white' }}>
-                        {getCollaboratorName(activeUserId).substring(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{getCollaboratorName(activeUserId)}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ))}
-          </div>
+        {connectedUsers.length > 5 && (
+          <Avatar className="border-2 border-background w-8 h-8">
+            <AvatarFallback className="bg-muted text-foreground text-xs">
+              +{connectedUsers.length - 5}
+            </AvatarFallback>
+          </Avatar>
         )}
-        
-        {/* Show error if there is one */}
-        {error && (
-          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-600 text-sm flex items-start">
-            <AlertCircle className="h-4 w-4 mr-1 mt-0.5 flex-shrink-0" />
-            <span>{error}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="relative">
+      <Card className="w-full">
+        <CardHeader className="py-3 flex flex-row items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-lg">Collaborative Editor</CardTitle>
           </div>
-        )}
-      </CardHeader>
-      
-      <CardContent className="pt-0">
-        <div className="relative">
-          {/* Reference to place cursor markers */}
-          <div 
-            ref={cursorMarkerRef} 
-            className="absolute inset-0 pointer-events-none overflow-hidden"
-          ></div>
-          
-          {/* The actual editor */}
-          <Textarea
-            ref={editorRef}
-            value={content}
-            onChange={handleContentChange}
-            onKeyUp={handleKeyUp}
-            onClick={handleCursorMove}
-            className="min-h-[400px] font-mono resize-vertical"
-            placeholder="Start typing your content here..."
-          />
-        </div>
-      </CardContent>
-      
-      <CardFooter className="justify-between">
-        <div className="text-sm text-muted-foreground">
-          {activeUsers.length > 0 
-            ? `${activeUsers.length} collaborator${activeUsers.length > 1 ? 's' : ''} online` 
-            : 'No collaborators online'}
-        </div>
+          {renderConnectedUsers()}
+        </CardHeader>
         
-        <Button
-          variant="default"
-          onClick={handleSave}
-          disabled={!hasUnsavedChanges}
-          className="gap-1"
-        >
-          <Save className="h-4 w-4" />
-          {hasUnsavedChanges ? 'Save Changes' : 'Saved'}
-        </Button>
-      </CardFooter>
-    </Card>
+        <CardContent className="relative">
+          <div className="relative">
+            <Textarea
+              ref={editorRef}
+              value={content}
+              onChange={handleContentChange}
+              onClick={handleCursorPositionChange}
+              onKeyUp={handleCursorPositionChange}
+              onSelect={handleCursorPositionChange}
+              className="min-h-[400px] font-mono resize-y"
+              placeholder="Start writing here..."
+            />
+            {renderCursorMarkers()}
+          </div>
+        </CardContent>
+        
+        <CardFooter className="flex justify-between">
+          <div className="text-sm text-muted-foreground">
+            {unsavedChanges ? (
+              <span className="flex items-center text-yellow-500">
+                <AlertCircle className="h-4 w-4 mr-1" /> Unsaved changes
+              </span>
+            ) : (
+              <span>All changes saved</span>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleSave}
+            disabled={isSaving || !unsavedChanges}
+            className="gap-1"
+          >
+            <Save className="h-4 w-4" />
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
   );
-}
+};
+
+export default CollaborativeEditor;

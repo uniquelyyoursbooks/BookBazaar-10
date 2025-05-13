@@ -18,271 +18,214 @@ interface DocumentChange {
   timestamp: Date;
 }
 
-interface CollaborationMessage {
+interface Message {
   type: string;
-  userId?: number;
-  bookId?: number;
-  chapterId?: number;
-  data?: any;
-  timestamp?: Date;
-  users?: number[];
-  changes?: DocumentChange[];
+  userId: number;
+  timestamp: string;
+  content?: string;
+  cursorPosition?: number;
   message?: string;
-  position?: number;
+  username?: string;
 }
 
-// Map to track active users with different colors
+interface CursorPosition {
+  userId: number;
+  position: number;
+  username: string;
+  color: string;
+}
+
+interface CollaborationResult {
+  sendMessage: (message: Message) => void;
+  connectedUsers: number[];
+  lastMessage: Message | null;
+  documentChanges: DocumentChange[];
+  cursorPositions: CursorPosition[];
+  updateCursorPosition: (position: number) => void;
+}
+
+// Color array for distinguishing users
 const USER_COLORS = [
-  '#F44336', '#E91E63', '#9C27B0', '#673AB7', 
-  '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4',
-  '#009688', '#4CAF50', '#8BC34A', '#CDDC39'
+  '#4285F4', // Google Blue
+  '#34A853', // Google Green
+  '#FBBC05', // Google Yellow
+  '#EA4335', // Google Red
+  '#8E44AD', // Purple
+  '#3498DB', // Blue
+  '#1ABC9C', // Teal
+  '#F39C12', // Orange
 ];
 
-export function useCollaboration(options: CollaborationOptions) {
-  const { bookId, userId, chapterId } = options;
-  const [isConnected, setIsConnected] = useState(false);
-  const [activeUsers, setActiveUsers] = useState<number[]>([]);
-  const [receivedChanges, setReceivedChanges] = useState<DocumentChange[]>([]);
-  const [cursorPositions, setCursorPositions] = useState<{[userId: number]: number}>({});
-  const [chatMessages, setChatMessages] = useState<{userId: number, message: string, timestamp: Date}[]>([]);
-  const [error, setError] = useState<string | null>(null);
+export const useCollaboration = ({
+  bookId,
+  userId,
+  chapterId
+}: CollaborationOptions): CollaborationResult => {
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [connectedUsers, setConnectedUsers] = useState<number[]>([]);
+  const [lastMessage, setLastMessage] = useState<Message | null>(null);
+  const [documentChanges, setDocumentChanges] = useState<DocumentChange[]>([]);
+  const [cursorPositions, setCursorPositions] = useState<CursorPosition[]>([]);
   
   const socketRef = useRef<WebSocket | null>(null);
-
-  // Function to send a change through the WebSocket
-  const sendChange = useCallback((changeType: string, position: number, content: string, previousContent?: string) => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      setError('Connection lost. Changes not synchronized.');
-      return false;
-    }
-    
-    const message: CollaborationMessage = {
-      type: 'change',
-      userId,
-      bookId,
-      chapterId,
-      data: {
-        changeType,
-        position,
-        content,
-        previousContent: previousContent || ''
-      }
-    };
-    
-    socketRef.current.send(JSON.stringify(message));
-    return true;
-  }, [userId, bookId, chapterId]);
-
-  // Function to send cursor position
-  const sendCursorPosition = useCallback((position: number) => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
-    
-    const message: CollaborationMessage = {
-      type: 'cursor-move',
-      userId,
-      bookId,
-      data: { position }
-    };
-    
-    socketRef.current.send(JSON.stringify(message));
-  }, [userId, bookId]);
-
-  // Function to send chat message
-  const sendChatMessage = useCallback((text: string) => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      setError('Connection lost. Message not sent.');
-      return false;
-    }
-    
-    const message: CollaborationMessage = {
-      type: 'chat-message',
-      userId,
-      bookId,
-      data: { message: text }
-    };
-    
-    socketRef.current.send(JSON.stringify(message));
-    
-    // Add the message locally as well
-    setChatMessages(prev => [...prev, { 
-      userId, 
-      message: text, 
-      timestamp: new Date() 
-    }]);
-    
-    return true;
-  }, [userId, bookId]);
-
-  // Connect to the WebSocket and handle messages
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Initialize WebSocket connection
   useEffect(() => {
-    if (!userId || !bookId) return;
+    if (!bookId || !userId) return;
     
-    // Create the WebSocket connection
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
-    
-    socket.onopen = () => {
-      console.log('WebSocket connection established');
+    const connectWebSocket = () => {
+      // Get the correct protocol (ws:// or wss://)
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
       
-      // Authenticate first
-      socket.send(JSON.stringify({ 
-        type: 'auth', 
-        userId 
-      }));
-    };
-    
-    socket.onmessage = (event) => {
-      try {
-        const message: CollaborationMessage = JSON.parse(event.data);
+      console.log(`Connecting to WebSocket at ${wsUrl}`);
+      const newSocket = new WebSocket(wsUrl);
+      
+      newSocket.onopen = () => {
+        console.log('WebSocket connection established');
+        setConnected(true);
         
-        switch (message.type) {
-          case 'auth-success':
-            setIsConnected(true);
-            
-            // Join the book's collaboration session
-            socket.send(JSON.stringify({
-              type: 'join',
-              userId,
-              bookId,
-              chapterId
-            }));
-            break;
-            
-          case 'error':
-            setError(message.message || 'Unknown error');
-            break;
-            
-          case 'session-info':
-            if (message.users) {
-              setActiveUsers(message.users);
-            }
-            break;
-            
-          case 'user-joined':
-            if (message.userId) {
-              setActiveUsers(prev => {
-                if (!prev.includes(message.userId!)) {
-                  return [...prev, message.userId!];
-                }
-                return prev;
-              });
-            }
-            break;
-            
-          case 'user-left':
-            if (message.userId) {
-              setActiveUsers(prev => prev.filter(id => id !== message.userId));
-              setCursorPositions(prev => {
-                const newPositions = {...prev};
-                delete newPositions[message.userId!];
-                return newPositions;
-              });
-            }
-            break;
-            
-          case 'change':
-            if (message.userId && message.userId !== userId && message.data) {
-              const change: DocumentChange = {
-                id: Date.now(), // Temporary ID
-                bookId,
-                chapterId: chapterId || null,
-                userId: message.userId,
-                changeType: message.data.changeType,
-                position: message.data.position,
-                content: message.data.content,
-                previousContent: message.data.previousContent,
-                timestamp: message.timestamp ? new Date(message.timestamp) : new Date()
-              };
-              
-              setReceivedChanges(prev => [...prev, change]);
-            }
-            break;
-            
-          case 'cursor-move':
-            if (message.userId && message.userId !== userId && message.position !== undefined) {
-              setCursorPositions(prev => ({
-                ...prev,
-                [message.userId!]: message.position!
-              }));
-            }
-            break;
-            
-          case 'chat-message':
-            if (message.userId && message.data?.message) {
-              setChatMessages(prev => [...prev, {
-                userId: message.userId!,
-                message: message.data.message,
-                timestamp: message.timestamp ? new Date(message.timestamp) : new Date()
-              }]);
-            }
-            break;
-            
-          case 'recent-changes':
-            if (message.changes) {
-              // Only apply changes we haven't processed yet
-              setReceivedChanges(prev => {
-                const existingIds = new Set(prev.map(c => c.id));
-                const newChanges = message.changes!.filter(c => !existingIds.has(c.id));
-                return [...prev, ...newChanges];
-              });
-            }
-            break;
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
-    };
-    
-    socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setError('WebSocket connection error');
-    };
-    
-    socket.onclose = () => {
-      console.log('WebSocket connection closed');
-      setIsConnected(false);
-      setError('Connection closed. Reconnecting...');
+        // Send join message
+        const joinMessage = {
+          type: 'join',
+          userId,
+          bookId,
+          chapterId,
+          timestamp: new Date().toISOString()
+        };
+        
+        newSocket.send(JSON.stringify(joinMessage));
+      };
       
-      // Reset active users since we're disconnected
-      setActiveUsers([]);
+      newSocket.onclose = () => {
+        console.log('WebSocket connection closed');
+        setConnected(false);
+        
+        // Attempt to reconnect after 3 seconds
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+        
+        reconnectTimeoutRef.current = setTimeout(() => {
+          console.log('Attempting to reconnect...');
+          connectWebSocket();
+        }, 3000);
+      };
+      
+      newSocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      newSocket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          console.log('Received message:', message);
+          
+          setLastMessage(message);
+          
+          // Handle different message types
+          switch (message.type) {
+            case 'users':
+              // Update list of connected users
+              setConnectedUsers(message.users);
+              break;
+              
+            case 'cursorPosition':
+              // Update cursor positions
+              setCursorPositions(prevPositions => {
+                // Remove any existing position for this user
+                const filteredPositions = prevPositions.filter(p => p.userId !== message.userId);
+                
+                // Add the new position
+                return [...filteredPositions, {
+                  userId: message.userId,
+                  position: message.cursorPosition,
+                  username: message.username || `User ${message.userId}`,
+                  color: USER_COLORS[message.userId % USER_COLORS.length]
+                }];
+              });
+              break;
+              
+            case 'contentChange':
+              // Content changes are handled by the component
+              break;
+              
+            case 'documentChange':
+              // Add new document change to the list
+              if (message.change) {
+                setDocumentChanges(prev => [message.change, ...prev]);
+              }
+              break;
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      
+      setSocket(newSocket);
+      socketRef.current = newSocket;
+      
+      return newSocket;
     };
     
-    // Clean up function
+    const newSocket = connectWebSocket();
+    
+    // Cleanup
     return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        // Send a leave message before closing
-        socket.send(JSON.stringify({
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        // Send leave message
+        const leaveMessage = {
           type: 'leave',
           userId,
-          bookId
-        }));
+          bookId,
+          chapterId,
+          timestamp: new Date().toISOString()
+        };
         
-        socket.close();
+        socketRef.current.send(JSON.stringify(leaveMessage));
+        socketRef.current.close();
+      }
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [userId, bookId, chapterId]);
+  }, [bookId, userId, chapterId]);
   
-  // Get a user's color based on their ID
-  const getUserColor = useCallback((collaboratorId: number) => {
-    const colorIndex = collaboratorId % USER_COLORS.length;
-    return USER_COLORS[colorIndex];
-  }, []);
-
+  // Send WebSocket message
+  const sendMessage = useCallback((message: Message) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      // Add common fields
+      const fullMessage = {
+        ...message,
+        bookId,
+        chapterId,
+      };
+      
+      socketRef.current.send(JSON.stringify(fullMessage));
+    } else {
+      console.warn('WebSocket not connected, cannot send message');
+    }
+  }, [bookId, chapterId]);
+  
+  // Update cursor position
+  const updateCursorPosition = useCallback((position: number) => {
+    sendMessage({
+      type: 'cursorPosition',
+      userId,
+      cursorPosition: position,
+      timestamp: new Date().toISOString()
+    });
+  }, [sendMessage, userId]);
+  
   return {
-    isConnected,
-    activeUsers,
-    receivedChanges,
+    sendMessage,
+    connectedUsers,
+    lastMessage,
+    documentChanges,
     cursorPositions,
-    chatMessages,
-    error,
-    sendChange,
-    sendCursorPosition,
-    sendChatMessage,
-    getUserColor,
-    
-    // Helper to clear received changes after processing
-    clearReceivedChanges: () => setReceivedChanges([])
+    updateCursorPosition
   };
-}
+};
