@@ -31,6 +31,8 @@ import { getBookCoverUrl } from "@/lib/utils";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
+import { Users } from "lucide-react";
+import { CollaborationPanel } from "@/components/collaboration";
 
 // Edit book schema
 const editBookSchema = z.object({
@@ -50,6 +52,9 @@ const EditBook: React.FC = () => {
   const [location, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Collaboration panel state
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
   
   // Cover image preview
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
