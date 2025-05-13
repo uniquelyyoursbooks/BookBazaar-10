@@ -167,6 +167,153 @@ function validateAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Type definitions for collaborative editing
+interface CollaborativeSession {
+  bookId: number;
+  chapterId?: number;
+  connectedUsers: Map<number, WebSocket>;
+}
+
+// Store active collaboration sessions
+const collaborativeSessions = new Map<number, CollaborativeSession>();
+
+// Send data to all connected users in a session except the sender
+function broadcastToSession(bookId: number, data: any, excludeUserId?: number) {
+  const session = collaborativeSessions.get(bookId);
+  if (!session) return;
+  
+  session.connectedUsers.forEach((socket, userId) => {
+    if (excludeUserId && userId === excludeUserId) return;
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(data));
+    }
+  });
+}
+
+// Handle WebSocket message for collaborative editing
+async function handleCollaborationMessage(message: any, userId: number, socket: WebSocket) {
+  const { type, bookId, chapterId, data } = message;
+  
+  try {
+    switch (type) {
+      case 'join':
+        // Check if user has permission to collaborate on this book
+        const permission = await storage.checkCollaborationPermission(userId, bookId);
+        if (!permission && userId !== (await storage.getBook(bookId))?.authorId) {
+          socket.send(JSON.stringify({ 
+            type: 'error',
+            message: 'You do not have permission to collaborate on this book' 
+          }));
+          return;
+        }
+        
+        // Add user to collaboration session
+        let session = collaborativeSessions.get(bookId);
+        if (!session) {
+          session = { 
+            bookId, 
+            chapterId,
+            connectedUsers: new Map()
+          };
+          collaborativeSessions.set(bookId, session);
+        }
+        
+        session.connectedUsers.set(userId, socket);
+        
+        // Notify others that a new user joined
+        broadcastToSession(bookId, {
+          type: 'user-joined',
+          userId,
+          timestamp: new Date()
+        }, userId);
+        
+        // Send the current list of active users to the joining user
+        socket.send(JSON.stringify({
+          type: 'session-info',
+          users: Array.from(session.connectedUsers.keys()).filter(id => id !== userId),
+          bookId
+        }));
+        
+        // Send recent changes to the joining user
+        const recentChanges = await storage.getLatestDocumentChanges(bookId);
+        socket.send(JSON.stringify({
+          type: 'recent-changes',
+          changes: recentChanges
+        }));
+        break;
+        
+      case 'leave':
+        const leaveSession = collaborativeSessions.get(bookId);
+        if (leaveSession) {
+          leaveSession.connectedUsers.delete(userId);
+          
+          // Remove the session if no users are left
+          if (leaveSession.connectedUsers.size === 0) {
+            collaborativeSessions.delete(bookId);
+          } else {
+            // Notify others that the user left
+            broadcastToSession(bookId, {
+              type: 'user-left',
+              userId,
+              timestamp: new Date()
+            });
+          }
+        }
+        break;
+        
+      case 'change':
+        // Store the change in the database
+        await storage.createDocumentChange({
+          bookId,
+          chapterId: chapterId || null,
+          userId,
+          changeType: data.changeType,
+          position: data.position,
+          content: data.content,
+          previousContent: data.previousContent
+        });
+        
+        // Broadcast the change to all other users
+        broadcastToSession(bookId, {
+          type: 'change',
+          userId,
+          data,
+          timestamp: new Date()
+        }, userId);
+        break;
+        
+      case 'cursor-move':
+        // Broadcast cursor position to others (no need to store in database)
+        broadcastToSession(bookId, {
+          type: 'cursor-move',
+          userId,
+          position: data.position,
+          timestamp: new Date()
+        }, userId);
+        break;
+        
+      case 'chat-message':
+        // Broadcast chat message to all users in the session
+        broadcastToSession(bookId, {
+          type: 'chat-message',
+          userId,
+          message: data.message,
+          timestamp: new Date()
+        });
+        break;
+        
+      default:
+        console.warn(`Unknown collaboration message type: ${type}`);
+    }
+  } catch (error) {
+    console.error('Error handling collaboration message:', error);
+    socket.send(JSON.stringify({
+      type: 'error',
+      message: 'Failed to process your request'
+    }));
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Public API routes
   
@@ -1096,5 +1243,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  
+  // Set up WebSocket server for real-time collaboration
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  
+  wss.on('connection', (socket) => {
+    console.log('WebSocket connection established');
+    let userId: number | null = null;
+    let currentBookId: number | null = null;
+    
+    socket.on('message', async (message) => {
+      try {
+        // Parse the incoming message
+        const parsedMessage = JSON.parse(message.toString());
+        
+        // Handle authentication first
+        if (parsedMessage.type === 'auth') {
+          // Get user ID from token/session
+          const user = await storage.getUser(parsedMessage.userId);
+          if (!user) {
+            socket.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
+            return;
+          }
+          
+          userId = user.id;
+          socket.send(JSON.stringify({ type: 'auth-success', userId }));
+          return;
+        }
+        
+        // Require authentication for all other message types
+        if (!userId) {
+          socket.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+          return;
+        }
+        
+        // Track the current book for cleanup purposes
+        if (parsedMessage.bookId) {
+          currentBookId = parsedMessage.bookId;
+        }
+        
+        // Process the collaboration message
+        await handleCollaborationMessage(parsedMessage, userId, socket);
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+        socket.send(JSON.stringify({ 
+          type: 'error', 
+          message: 'Failed to process message'
+        }));
+      }
+    });
+    
+    // Handle disconnections
+    socket.on('close', () => {
+      console.log('WebSocket connection closed');
+      
+      // Clean up if user was in a collaboration session
+      if (userId && currentBookId) {
+        const session = collaborativeSessions.get(currentBookId);
+        if (session) {
+          session.connectedUsers.delete(userId);
+          
+          // Remove the session if no users are left
+          if (session.connectedUsers.size === 0) {
+            collaborativeSessions.delete(currentBookId);
+          } else {
+            // Notify others that the user left
+            broadcastToSession(currentBookId, {
+              type: 'user-left',
+              userId,
+              timestamp: new Date()
+            });
+          }
+        }
+      }
+    });
+  });
+  
   return httpServer;
 }
