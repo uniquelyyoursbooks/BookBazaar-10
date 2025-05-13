@@ -29,6 +29,7 @@ interface Chapter {
 interface ChapterEditorProps {}
 
 const EditChapter: React.FC<ChapterEditorProps> = () => {
+  // Use parameters that match the route defined in App.tsx
   const { bookId, chapterId } = useParams<{ bookId: string, chapterId: string }>();
   const bookIdNum = parseInt(bookId);
   const chapterIdNum = parseInt(chapterId);
