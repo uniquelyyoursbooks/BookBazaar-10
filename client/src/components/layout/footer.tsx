@@ -41,31 +41,23 @@ const Footer: React.FC = () => {
                 </h3>
                 <ul className="mt-4 space-y-4">
                   <li>
-                    <Link href="/">
-                      <a className="text-base text-neutral-600 hover:text-neutral-900">
-                        How it Works
-                      </a>
+                    <Link href="/" className="text-base text-neutral-600 hover:text-neutral-900">
+                      How it Works
                     </Link>
                   </li>
                   <li>
-                    <Link href="/read/1">
-                      <a className="text-base text-neutral-600 hover:text-neutral-900">
-                        Reader Experience
-                      </a>
+                    <Link href="/read/1" className="text-base text-neutral-600 hover:text-neutral-900">
+                      Reader Experience
                     </Link>
                   </li>
                   <li>
-                    <Link href="/dashboard">
-                      <a className="text-base text-neutral-600 hover:text-neutral-900">
-                        Author Tools
-                      </a>
+                    <Link href="/dashboard" className="text-base text-neutral-600 hover:text-neutral-900">
+                      Author Tools
                     </Link>
                   </li>
                   <li>
-                    <Link href="/">
-                      <a className="text-base text-neutral-600 hover:text-neutral-900">
-                        Pricing
-                      </a>
+                    <Link href="/" className="text-base text-neutral-600 hover:text-neutral-900">
+                      Pricing
                     </Link>
                   </li>
                 </ul>
