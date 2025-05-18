@@ -30,4 +30,4 @@ jobs:
       # Deploy to App Runner (existing service, source deployment)
       - name: Trigger AWS App Runner deployment
         run: |
-          aws apprunner start-deployment --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }}
+          aws apprunner start-deployment --service-arn ${{ secrets.arn:aws:apprunner:us-east-1:575108943056:service/BookNest/b5ac9b56e73a4ab3b4fbbf5fb9907bbf }}
