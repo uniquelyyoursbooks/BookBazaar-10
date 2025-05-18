@@ -76,10 +76,11 @@ export const useCollaboration = ({
     if (!bookId || !userId) return;
     
     const connectWebSocket = () => {
-      // Always use secure WebSocket connections (wss://)
-      // In development, we'll fallback to ws:// only if running on localhost
+      // Always use secure WebSocket connections (wss://) except in localhost development
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const protocol = (window.location.protocol === 'https:' || !isLocalhost) ? 'wss:' : 'ws:';
+      const isHttps = window.location.protocol === 'https:';
+      // Only use ws:// if we're on localhost AND using http://
+      const protocol = (!isLocalhost || isHttps) ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       
       console.log(`Connecting to WebSocket at ${wsUrl}`);
