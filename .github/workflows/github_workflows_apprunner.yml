@@ -1,4 +1,4 @@
-name: Deploy to AWS App Runner
+${{ secrets.ARN_AWS_APPRUNNER_US_EAST_1_575108943056_SERVICE_BOOKNEST_B5AC9B56E73A4AB3B4FBBF5FB9907BBF }}name: Deploy to AWS App Runner
 
 on:
   push:
@@ -34,8 +34,7 @@ jobs:
       # Deploy to AWS App Runner using AWS CLI
       - name: Deploy to AWS App Runner
         run: |
-          aws apprunner start-deployment --service-arn ${{ secrets.arn:aws:apprunner:us-east-1:575108943056:service/BookNest/b5ac9b56e73a4ab3b4fbbf5fb9907bbf }}
-        env:
+         ${{ secrets.ARN_AWS_APPRUNNER_US_EAST_1_575108943056_SERVICE_BOOKNEST_B5AC9B56E73A4AB3B4FBBF5FB9907BBF }}       env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AKIAYLZZKBTIOWXY7OPB }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.dzJEilbx9DaF2LzYoiDqKAstZu8ZYGI6AqIKbf4t }}
           AWS_REGION: us-east-1
