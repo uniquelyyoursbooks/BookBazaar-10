@@ -20,7 +20,8 @@ jobs:
         echo $CONDA/bin >> $GITHUB_PATH
     - name: Install dependencies
       run: |
-        conda env update --github_workflows_apprunner.yml --name base
+        conda env update --- name: Set up Conda Environment
+  run: conda env create --.github/workflows/github_workflows_apprunner.yml --name base
     - name: Lint with flake8
       run: |
         conda install flake8
