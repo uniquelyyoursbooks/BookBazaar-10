@@ -1,0 +1,7 @@
+run: ["python3", "main.py"]
+entrypoint: "main.py"
+deployment:
+  autoscale:
+    enabled: true
+    minInstances: 1
+    maxInstances: 10

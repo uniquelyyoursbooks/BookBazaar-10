@@ -1,0 +1,7 @@
+run: ["node", "index.js"]
+entrypoint: "index.js"
+deployment:
+  autoscale:
+    enabled: true
+    minInstances: 1
+    maxInstances: 10
